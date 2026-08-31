@@ -1,6 +1,7 @@
 const express = require("express");
 const { pool } = require("../db");
 const { requireAuth, requireAdmin } = require("../auth");
+const { hasLoyersAccess } = require("../access");
 
 const router = express.Router();
 
@@ -32,6 +33,12 @@ function stripSensitiveFields(data) {
 }
 
 router.get("/", requireAuth, async (req, res) => {
+  // Un compte "employe" sans accès Loyers (par ex. un chef de chantier
+  // Chantiers-only) n'a droit à rien ici, même en lecture — vérifié en base à
+  // chaque requête, pas seulement caché côté interface.
+  if (!(await hasLoyersAccess(req.user))) {
+    return res.status(403).json({ error: "Accès au module Loyers non autorisé." });
+  }
   const { rows } = await pool.query("SELECT data FROM portfolio WHERE id = 1");
   const data = rows[0]?.data || { properties: [], payments: {}, expenses: [] };
   const payload = req.user.role === "admin" ? data : stripSensitiveFields(data);

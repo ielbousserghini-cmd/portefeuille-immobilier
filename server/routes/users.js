@@ -10,7 +10,7 @@ router.use(requireAuth, requireAdmin);
 
 router.get("/", async (req, res) => {
   const { rows } = await pool.query(
-    "SELECT id, name, username, role, active, created_at FROM users ORDER BY created_at ASC"
+    "SELECT id, name, username, role, active, loyers_access, created_at FROM users ORDER BY created_at ASC"
   );
   res.json({ users: rows });
 });
@@ -43,7 +43,7 @@ router.post("/", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, role, active, password } = req.body || {};
+  const { name, role, active, password, loyers_access } = req.body || {};
 
   if (id === req.user.id && (active === false || (role && role !== "admin"))) {
     return res.status(400).json({ error: "Tu ne peux pas retirer tes propres droits admin ou désactiver ton propre compte." });
@@ -56,6 +56,11 @@ router.patch("/:id", async (req, res) => {
   if (typeof name === "string" && name.trim()) { fields.push(`name = $${i++}`); values.push(name.trim()); }
   if (role && ["admin", "employe"].includes(role)) { fields.push(`role = $${i++}`); values.push(role); }
   if (typeof active === "boolean") { fields.push(`active = $${i++}`); values.push(active); }
+  // Accès au module Loyers, indépendant du rôle Loyers ci-dessus et du rôle
+  // Chantiers (module_access) : permet par ex. de créer un chef de chantier
+  // qui n'a jamais accès au module Loyers. Sans effet pour un compte admin
+  // (toujours accès complet), utile seulement pour un compte "employe".
+  if (typeof loyers_access === "boolean") { fields.push(`loyers_access = $${i++}`); values.push(loyers_access); }
   if (typeof password === "string" && password) {
     if (password.length < 6) return res.status(400).json({ error: "Le mot de passe doit contenir au moins 6 caractères." });
     const hash = await bcrypt.hash(password, 10);
@@ -67,7 +72,7 @@ router.patch("/:id", async (req, res) => {
 
   values.push(id);
   const { rows } = await pool.query(
-    `UPDATE users SET ${fields.join(", ")} WHERE id = $${i} RETURNING id, name, username, role, active, created_at`,
+    `UPDATE users SET ${fields.join(", ")} WHERE id = $${i} RETURNING id, name, username, role, active, loyers_access, created_at`,
     values
   );
   if (!rows[0]) return res.status(404).json({ error: "Utilisateur introuvable." });

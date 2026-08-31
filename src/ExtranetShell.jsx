@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Building2, Wallet, HardHat, Users as UsersIcon, LogOut } from "lucide-react";
 import { fontImport, styles } from "./theme.jsx";
 import LoyersModule from "./LoyersModule.jsx";
@@ -9,20 +9,31 @@ import UsersPage from "./Users.jsx";
 // déconnexion, un seul bloc compte — partagés par les deux modules ("Suivi
 // loyers" et "Suivi chantiers") et par la page Utilisateurs.
 //
-// currentUser.chantierRole est renvoyé par /api/me et /api/login (voir
-// server/routes/auth.js) : c'est le rôle de cet utilisateur au sein du module
-// Chantiers (admin/direction/chef_chantier/sous_traitant), résolu côté
-// serveur via access.getChantierRole — indépendamment de currentUser.role qui
-// reste le rôle global Loyers (admin/employe). Un admin global a toujours
-// chantierRole === "admin". Un employé sans accès a chantierRole === null,
-// et dans ce cas la section "Suivi chantiers" n'apparaît simplement pas dans
-// la Sidebar (pas d'état "accès refusé" affiché, cohérent avec la façon dont
-// les restrictions du module Loyers sont déjà invisibles pour un employé).
+// currentUser.chantierRole et currentUser.loyersAccess sont renvoyés par
+// /api/me et /api/login (voir server/routes/auth.js) : ce sont les accès de
+// cet utilisateur à chacun des deux modules, résolus côté serveur
+// (access.getChantierRole / access.hasLoyersAccess) — tous les deux
+// indépendants l'un de l'autre et de currentUser.role (admin/employe global).
+// Un admin global a toujours accès aux deux. Un employé peut n'avoir accès
+// qu'à un seul des deux modules (par ex. un chef de chantier sans accès
+// Loyers), et dans ce cas la section correspondante n'apparaît simplement pas
+// dans la Sidebar (pas d'état "accès refusé" affiché).
 export default function ExtranetShell({ currentUser, onLogout }) {
   const isLoyersAdmin = currentUser.role === "admin";
+  const hasLoyersAccess = isLoyersAdmin || Boolean(currentUser.loyersAccess);
   const hasChantiersAccess = Boolean(currentUser.chantierRole);
 
-  const [section, setSection] = useState("loyers");
+  // Démarre sur le premier module auquel ce compte a effectivement accès,
+  // pour ne jamais atterrir sur un écran vide si, par ex., un chef de
+  // chantier sans accès Loyers se connecte.
+  const defaultSection = useMemo(() => {
+    if (hasLoyersAccess) return "loyers";
+    if (hasChantiersAccess) return "chantiers";
+    if (isLoyersAdmin) return "utilisateurs";
+    return "loyers";
+  }, [hasLoyersAccess, hasChantiersAccess, isLoyersAdmin]);
+
+  const [section, setSection] = useState(defaultSection);
 
   return (
     <div className="app-shell" style={styles.app}>
@@ -32,11 +43,12 @@ export default function ExtranetShell({ currentUser, onLogout }) {
         setSection={setSection}
         currentUser={currentUser}
         isLoyersAdmin={isLoyersAdmin}
+        hasLoyersAccess={hasLoyersAccess}
         hasChantiersAccess={hasChantiersAccess}
         onLogout={onLogout}
       />
       <main className="main-content" style={styles.main}>
-        {section === "loyers" && <LoyersModule currentUser={currentUser} />}
+        {section === "loyers" && hasLoyersAccess && <LoyersModule currentUser={currentUser} />}
         {section === "chantiers" && hasChantiersAccess && <ChantiersModule currentUser={currentUser} />}
         {section === "utilisateurs" && isLoyersAdmin && <UsersPage currentUser={currentUser} />}
       </main>
@@ -44,9 +56,9 @@ export default function ExtranetShell({ currentUser, onLogout }) {
   );
 }
 
-function Sidebar({ section, setSection, currentUser, isLoyersAdmin, hasChantiersAccess, onLogout }) {
+function Sidebar({ section, setSection, currentUser, isLoyersAdmin, hasLoyersAccess, hasChantiersAccess, onLogout }) {
   const items = [
-    { id: "loyers", label: "Suivi loyers", icon: Wallet },
+    ...(hasLoyersAccess ? [{ id: "loyers", label: "Suivi loyers", icon: Wallet }] : []),
     ...(hasChantiersAccess ? [{ id: "chantiers", label: "Suivi chantiers", icon: HardHat }] : []),
     ...(isLoyersAdmin ? [{ id: "utilisateurs", label: "Utilisateurs", icon: UsersIcon }] : []),
   ];

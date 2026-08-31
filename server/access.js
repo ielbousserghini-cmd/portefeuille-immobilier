@@ -82,6 +82,19 @@ async function canSeeBudget(user) {
   return role !== null && role !== "sous_traitant";
 }
 
+// Accès au module Loyers, symétrique à getChantierRole ci-dessus : un admin
+// global a toujours accès ; un compte "employe" en a par défaut (colonne
+// users.loyers_access, DEFAULT true), sauf si un admin la lui a retirée
+// explicitement dans Utilisateurs (par ex. un chef de chantier qui ne doit
+// voir que le module Chantiers). Résolu en base à chaque requête (jamais
+// depuis le cookie de session) pour qu'un changement fait par l'admin
+// s'applique immédiatement, sans que l'utilisateur ait à se reconnecter.
+async function hasLoyersAccess(user) {
+  if (user.role === "admin") return true;
+  const { rows } = await pool.query("SELECT loyers_access FROM users WHERE id = $1", [user.id]);
+  return rows[0]?.loyers_access ?? true;
+}
+
 module.exports = {
   getChantierRole,
   getAccessibleChantierIds,
@@ -91,4 +104,5 @@ module.exports = {
   canWritePlanning,
   canWriteBudget,
   canSeeBudget,
+  hasLoyersAccess,
 };

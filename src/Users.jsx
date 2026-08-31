@@ -126,6 +126,16 @@ export default function Users({ currentUser }) {
     }
   }
 
+  async function toggleLoyersAccess(user) {
+    setError(null);
+    try {
+      await api.updateUser(user.id, { loyers_access: !user.loyers_access });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   async function toggleRole(user) {
     setError(null);
     const nextRole = user.role === "admin" ? "employe" : "admin";
@@ -203,6 +213,9 @@ export default function Users({ currentUser }) {
             <Plus size={16} strokeWidth={2} /> Ajouter
           </button>
         </form>
+        <div style={{ ...styles.emptyNote, marginTop: 10 }}>
+          Un nouvel employé a accès au module Loyers par défaut. Pour un compte réservé au module Chantiers (chef de chantier, sous-traitant), décoche "Accès Loyers" ci-dessous une fois le compte créé, puis règle son accès Chantiers dans la colonne suivante.
+        </div>
       </section>
 
       <section style={{ ...styles.card, marginTop: 16 }}>
@@ -216,6 +229,7 @@ export default function Users({ currentUser }) {
                 <th style={styles.th}>Nom</th>
                 <th style={styles.th}>Identifiant</th>
                 <th style={styles.th}>Rôle</th>
+                <th style={styles.th}>Accès Loyers</th>
                 <th style={styles.th}>Accès Chantiers</th>
                 <th style={styles.th}>Statut</th>
                 <th style={styles.th}></th>
@@ -227,6 +241,22 @@ export default function Users({ currentUser }) {
                   <td style={styles.td}>{u.name}{u.id === currentUser.id && <span style={{ color: "var(--text-dim)" }}> (toi)</span>}</td>
                   <td style={styles.td}>{u.username}</td>
                   <td style={styles.td}><span style={localStyles.roleTag(u.role)}>{u.role === "admin" ? "Admin" : "Employé"}</span></td>
+                  <td style={styles.td}>
+                    {u.role === "admin" ? (
+                      <span style={{ fontSize: 12, color: "var(--text-dim)" }} title="Un administrateur global a toujours un accès complet au module Loyers.">
+                        Admin (accès global)
+                      </span>
+                    ) : (
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(u.loyers_access)}
+                          onChange={() => toggleLoyersAccess(u)}
+                        />
+                        {u.loyers_access ? "Oui" : "Non"}
+                      </label>
+                    )}
+                  </td>
                   <td style={styles.td}>
                     {u.role === "admin" ? (
                       <span style={{ fontSize: 12, color: "var(--text-dim)" }} title="Un administrateur global a toujours un accès complet au module Chantiers.">

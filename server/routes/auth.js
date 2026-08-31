@@ -2,7 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const { pool } = require("../db");
 const { setSessionCookie, clearSessionCookie, requireAuth } = require("../auth");
-const { getChantierRole } = require("../access");
+const { getChantierRole, hasLoyersAccess } = require("../access");
 
 const router = express.Router();
 
@@ -28,12 +28,14 @@ router.post("/login", async (req, res) => {
   if (!ok) return genericError();
 
   setSessionCookie(res, user);
-  // chantierRole (module Suivi chantiers) est résolu et renvoyé ici en plus du
-  // rôle Loyers global (role), pour que le frontend sache dès la connexion
-  // si/quel accès l'utilisateur a au module Chantiers, sans aller-retour
-  // supplémentaire.
+  // chantierRole (module Suivi chantiers) et loyersAccess (module Suivi
+  // loyers) sont résolus et renvoyés ici en plus du rôle global (role), pour
+  // que le frontend sache dès la connexion à quels modules l'utilisateur a
+  // accès, sans aller-retour supplémentaire. Les deux sont indépendants l'un
+  // de l'autre : un compte peut avoir l'un, l'autre, les deux, ou aucun.
   const chantierRole = await getChantierRole(user);
-  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role, chantierRole } });
+  const loyersAccess = await hasLoyersAccess(user);
+  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role, chantierRole, loyersAccess } });
 });
 
 router.post("/logout", (req, res) => {
@@ -54,7 +56,8 @@ router.get("/me", requireAuth, async (req, res) => {
     return res.status(401).json({ error: "Compte désactivé ou introuvable." });
   }
   const chantierRole = await getChantierRole(user);
-  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role, chantierRole } });
+  const loyersAccess = await hasLoyersAccess(user);
+  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role, chantierRole, loyersAccess } });
 });
 
 module.exports = router;

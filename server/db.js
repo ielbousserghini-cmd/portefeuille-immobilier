@@ -34,6 +34,17 @@ async function migrate() {
     );
   `);
 
+  // Permet à un admin de retirer complètement l'accès au module Loyers à un
+  // compte "employe" (par ex. un chef de chantier qui ne doit voir que le
+  // module Chantiers). DEFAULT true : les comptes employé existants gardent
+  // exactement le même accès qu'avant cet ajout, rien ne change pour eux tant
+  // qu'un admin ne décoche pas explicitement la case dans Utilisateurs. Un
+  // admin global a de toute façon toujours accès aux deux modules, quel que
+  // soit ce champ.
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS loyers_access BOOLEAN NOT NULL DEFAULT true;
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS portfolio (
       id INTEGER PRIMARY KEY DEFAULT 1,
