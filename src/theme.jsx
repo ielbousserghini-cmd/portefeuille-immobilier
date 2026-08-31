@@ -182,4 +182,46 @@ export const styles = {
   formError: { background: "var(--bad-dim)", color: "#F3E4DE", fontSize: 12.5, padding: "8px 10px", borderRadius: 6, marginTop: 6 },
   confirmRow: { display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: "var(--text)", marginTop: 10, cursor: "pointer" },
   bulkPreview: { fontSize: 12.5, color: "var(--accent)", background: "var(--surface-2)", padding: "8px 10px", borderRadius: 6, marginTop: 2, marginBottom: 8, fontFamily: "var(--font-mono)" },
+
+  // --- Ajouts pour le module "Suivi chantiers" ---
+  // Additifs uniquement : aucune des clés ci-dessus n'est modifiée. Réutilise
+  // les tokens de couleur déjà définis dans le bloc :root (fontImport) —
+  // aucune nouvelle variable CSS n'a été nécessaire, y compris pour le ton
+  // "warn" (mappé sur --accent, déjà un doré/ambre qui porte bien un sens
+  // d'avertissement dans cette palette).
+  grid3: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 },
+
+  progressTrack: { height: 8, borderRadius: 999, background: "var(--surface-2)", overflow: "hidden", flex: 1 },
+  progressFill: (pct, color) => ({
+    height: "100%",
+    width: `${Math.max(0, Math.min(100, pct))}%`,
+    background: color || "var(--accent)",
+    borderRadius: 999,
+  }),
+
+  badge: (tone) => {
+    const tones = {
+      good: { bg: "var(--surface-2)", fg: "var(--good)" },
+      bad: { bg: "var(--bad-dim)", fg: "var(--bad)" },
+      warn: { bg: "var(--surface-2)", fg: "var(--accent)" },
+      neutral: { bg: "var(--surface-2)", fg: "var(--text-dim)" },
+    };
+    const t = tones[tone] || tones.neutral;
+    return {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 5,
+      fontSize: 11.5,
+      fontWeight: 600,
+      padding: "3px 9px",
+      borderRadius: 999,
+      background: t.bg,
+      color: t.fg,
+    };
+  },
+
+  photoGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 },
+  photoCard: { position: "relative", borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)" },
+  photoImg: { width: "100%", height: 110, objectFit: "cover", display: "block" },
+  photoCaption: { fontSize: 11, color: "var(--text-dim)", padding: "6px 8px" },
 };

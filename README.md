@@ -111,5 +111,64 @@ quelqu'un admin.
 ## Sauvegardes
 
 En plus de la base de données (déjà persistante), le bouton "Exporter une
-sauvegarde" (visible par l'admin) télécharge un fichier `.json` de toutes
-les données à un instant donné — utile à garder de côté de temps en temps.
+sauvegarde" (visible par l'admin, dans l'onglet "Suivi loyers") télécharge un
+fichier `.json` de toutes les données du module Loyers à un instant donné —
+utile à garder de côté de temps en temps.
+
+## Module "Suivi chantiers"
+
+En plus du suivi des loyers, l'extranet inclut désormais un second module
+indépendant : le suivi de chantiers (avancement par lot, planning, budget
+prévisionnel vs réel, photos et documents de chantier). Même connexion, même
+URL, mêmes comptes — c'est une extension du service déjà déployé, pas une
+nouvelle application. **Rien n'est retiré ni modifié dans le module Loyers
+existant** ; toutes les tables ajoutées en base le sont de façon additive
+(`CREATE TABLE IF NOT EXISTS`), donc redéployer ne touche ni aux comptes ni
+aux données déjà en place — c'est un `git push` normal, sans étape spéciale.
+
+### Rôles du module Chantiers
+
+Ce module a son propre système de rôles, indépendant du rôle Loyers
+(admin/employé) de chaque compte :
+
+- **Admin** (un administrateur global l'est toujours automatiquement) : accès
+  complet — crée les chantiers/lots, gère budget/planning, voit tout.
+- **Direction** : voit tous les chantiers en lecture seule (y compris le budget).
+- **Chef de chantier** : voit et modifie le(s) chantier(s) qui lui sont
+  affectés (avancement, planning, documents ; budget en lecture seule).
+- **Sous-traitant** : voit et modifie uniquement le(s) lot(s) précis qui lui
+  sont affectés ; ne voit jamais le budget.
+
+Un compte "employé" n'a par défaut **aucun accès** au module Chantiers : c'est
+un administrateur global qui lui attribue un rôle Chantiers (ou "Aucun" pour
+le retirer) depuis l'onglet **Utilisateurs**, colonne "Accès Chantiers". Une
+fois un rôle "Chef de chantier" ou "Sous-traitant" attribué, le bouton
+"Affectations" permet de choisir quel(s) chantier(s)/lot(s) cette personne
+voit. Si un compte n'a aucun accès, la section "Suivi chantiers" n'apparaît
+simplement pas dans son menu — pas de message d'erreur, elle est juste absente.
+
+### Nouvelles variables d'environnement à ajouter sur Render
+
+Le module Chantiers stocke ses photos et documents sur **Cloudinary**
+(gratuit), pour la même raison que la base de données est sur Neon : le
+disque du service Render est effacé à chaque redémarrage. Il faut créer un
+compte Cloudinary et ajouter deux nouvelles variables d'environnement au
+service Render **existant** (Dashboard Render → ton service → Environment) :
+
+1. Va sur https://cloudinary.com et crée un compte gratuit.
+2. Une fois connecté, note ton **Cloud name** (visible en haut du tableau de
+   bord) → variable `VITE_CLOUDINARY_CLOUD_NAME`.
+3. Va dans **Settings** (roue crantée) → **Upload** → section **Upload
+   presets** → **Add upload preset**.
+4. Mets **Signing Mode** sur **Unsigned** (essentiel : c'est ce qui permet au
+   navigateur d'envoyer un fichier sans mot de passe secret). Donne-lui un nom
+   simple (ex. `chantiers`), enregistre → variable `VITE_CLOUDINARY_UPLOAD_PRESET`.
+5. Ajoute ces deux variables au service Render existant, puis redéploie
+   (un simple `git push` déclenche déjà un redéploiement si l'auto-deploy est
+   actif). Toutes les autres variables (`DATABASE_URL`, `JWT_SECRET`,
+   `ADMIN_USERNAME`, etc.), l'URL du service et les comptes existants restent
+   inchangés.
+
+Au premier démarrage après ce déploiement, le serveur crée automatiquement
+les nouvelles tables du module Chantiers (elles n'existent pas encore dans la
+base) sans toucher aux tables `users`/`portfolio` existantes ni à leur contenu.

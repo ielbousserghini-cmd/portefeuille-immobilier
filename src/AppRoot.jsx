@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import { fontImport } from "./theme.jsx";
 import Login from "./Login.jsx";
-import Portfolio from "./App.jsx";
+import ExtranetShell from "./ExtranetShell.jsx";
 
 const loadingStyle = {
   minHeight: "100vh",
@@ -46,7 +46,7 @@ export default function AppRoot() {
       {!checked ? (
         <div style={loadingStyle}>Chargement…</div>
       ) : user ? (
-        <Portfolio currentUser={user} onLogout={handleLogout} />
+        <ExtranetShell currentUser={user} onLogout={handleLogout} />
       ) : (
         <Login onLogin={setUser} />
       )}

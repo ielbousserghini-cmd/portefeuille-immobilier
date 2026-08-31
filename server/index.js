@@ -7,6 +7,11 @@ const { migrate, seedAdmin } = require("./db");
 const authRoutes = require("./routes/auth");
 const portfolioRoutes = require("./routes/portfolio");
 const usersRoutes = require("./routes/users");
+const chantiersRoutes = require("./routes/chantiers");
+const avancementRoutes = require("./routes/avancement");
+const budgetRoutes = require("./routes/budget");
+const planningRoutes = require("./routes/planning");
+const documentsRoutes = require("./routes/documents");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +22,11 @@ app.use(cookieParser());
 app.use("/api", authRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/chantiers", chantiersRoutes);
+app.use("/api", avancementRoutes);
+app.use("/api", budgetRoutes);
+app.use("/api", planningRoutes);
+app.use("/api", documentsRoutes);
 
 // Sert le frontend React construit (dossier dist/, généré par `vite build`).
 const distDir = path.join(__dirname, "..", "dist");

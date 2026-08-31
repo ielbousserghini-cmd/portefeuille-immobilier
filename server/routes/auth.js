@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const { pool } = require("../db");
 const { setSessionCookie, clearSessionCookie, requireAuth } = require("../auth");
+const { getChantierRole } = require("../access");
 
 const router = express.Router();
 
@@ -27,7 +28,12 @@ router.post("/login", async (req, res) => {
   if (!ok) return genericError();
 
   setSessionCookie(res, user);
-  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role } });
+  // chantierRole (module Suivi chantiers) est résolu et renvoyé ici en plus du
+  // rôle Loyers global (role), pour que le frontend sache dès la connexion
+  // si/quel accès l'utilisateur a au module Chantiers, sans aller-retour
+  // supplémentaire.
+  const chantierRole = await getChantierRole(user);
+  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role, chantierRole } });
 });
 
 router.post("/logout", (req, res) => {
@@ -47,7 +53,8 @@ router.get("/me", requireAuth, async (req, res) => {
     clearSessionCookie(res);
     return res.status(401).json({ error: "Compte désactivé ou introuvable." });
   }
-  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role } });
+  const chantierRole = await getChantierRole(user);
+  res.json({ user: { id: user.id, name: user.name, username: user.username, role: user.role, chantierRole } });
 });
 
 module.exports = router;

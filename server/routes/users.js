@@ -83,4 +83,79 @@ router.delete("/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Accès au module Chantiers (indépendant du rôle Loyers ci-dessus) ---
+
+const CHANTIER_ROLES = ["admin", "direction", "chef_chantier", "sous_traitant"];
+
+router.get("/:id/module-access", async (req, res) => {
+  const { rows } = await pool.query(
+    "SELECT role FROM module_access WHERE user_id = $1 AND module = 'chantiers'",
+    [Number(req.params.id)]
+  );
+  res.json({ role: rows[0]?.role || null });
+});
+
+router.put("/:id/module-access", async (req, res) => {
+  const id = Number(req.params.id);
+  const { module, role } = req.body || {};
+  if (module !== "chantiers") {
+    return res.status(400).json({ error: "Module inconnu." });
+  }
+  if (role === null) {
+    await pool.query("DELETE FROM module_access WHERE user_id = $1 AND module = $2", [id, module]);
+    return res.json({ role: null });
+  }
+  if (!CHANTIER_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Rôle invalide (${CHANTIER_ROLES.join("/")} ou null).` });
+  }
+  await pool.query(
+    `INSERT INTO module_access (user_id, module, role) VALUES ($1, $2, $3)
+     ON CONFLICT (user_id, module) DO UPDATE SET role = EXCLUDED.role`,
+    [id, module, role]
+  );
+  res.json({ role });
+});
+
+// --- Affectations (quel utilisateur voit/modifie quel chantier ou lot) ---
+
+router.get("/:id/assignments", async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT a.id, a.chantier_id, a.lot_id, c.name AS chantier_name, l.name AS lot_name
+     FROM assignments a
+     JOIN chantiers c ON c.id = a.chantier_id
+     LEFT JOIN lots l ON l.id = a.lot_id
+     WHERE a.user_id = $1
+     ORDER BY a.id ASC`,
+    [Number(req.params.id)]
+  );
+  res.json({ assignments: rows });
+});
+
+router.post("/:id/assignments", async (req, res) => {
+  const userId = Number(req.params.id);
+  const { chantierId, lotId } = req.body || {};
+  if (!chantierId) return res.status(400).json({ error: "chantierId requis." });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO assignments (user_id, chantier_id, lot_id) VALUES ($1, $2, $3)
+       RETURNING id, chantier_id, lot_id`,
+      [userId, Number(chantierId), lotId ? Number(lotId) : null]
+    );
+    res.status(201).json({ assignment: rows[0] });
+  } catch (err) {
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "Cette affectation existe déjà." });
+    }
+    throw err;
+  }
+});
+
+router.delete("/:id/assignments/:assignmentId", async (req, res) => {
+  await pool.query("DELETE FROM assignments WHERE id = $1 AND user_id = $2", [
+    Number(req.params.assignmentId),
+    Number(req.params.id),
+  ]);
+  res.json({ ok: true });
+});
+
 module.exports = router;
