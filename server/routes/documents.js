@@ -33,7 +33,7 @@ router.get("/chantiers/:chantierId/documents", async (req, res) => {
 // Ce que le navigateur reçoit d'un document : jamais l'adresse Cloudinary
 // directe, seulement la route ci-dessous qui contrôle l'accès à chaque lecture.
 function publicDocument(d) {
-  const { url, public_id, resource_type, format, delivery_type, ...rest } = d;
+  const { url, public_id, resource_type, format, version, delivery_type, ...rest } = d;
   return { ...rest, file_url: `/api/documents/${d.id}/fichier` };
 }
 
@@ -51,19 +51,27 @@ async function writeAccessError(req, chantierId, lotId) {
 
 // Signature d'un envoi direct navigateur -> Cloudinary, valable pour un seul
 // fichier rangé dans le dossier du chantier, en accès authentifié.
+// Corps : { lotId, extension } (extension du fichier, liste blanche).
 router.post("/chantiers/:chantierId/documents/signature", async (req, res) => {
   const chantierId = Number(req.params.chantierId);
   const lotId = req.body?.lotId ? Number(req.body.lotId) : null;
   if (!Number.isInteger(chantierId) || chantierId <= 0) return res.status(400).json({ error: "Chantier invalide." });
   const denied = await writeAccessError(req, chantierId, lotId);
   if (denied) return res.status(403).json({ error: denied });
-  const upload = cloudinary.buildUploadSignature(chantierId);
+  const upload = cloudinary.buildUploadSignature(chantierId, req.body?.extension);
   if (!upload) return res.status(503).json({ error: "Le stockage des fichiers n'est pas configuré (variables CLOUDINARY_* manquantes)." });
+  if (upload.error) {
+    return res.status(400).json({ error: `Type de fichier non accepté. Formats autorisés : ${cloudinary.ALLOWED_EXTENSIONS.join(", ")}.` });
+  }
   res.json({ upload });
 });
 
-// Lecture d'un fichier : accès vérifié à chaque fois, puis redirection vers une
-// URL Cloudinary signée qui expire au bout de quelques minutes.
+// Hôte des anciens fichiers publics (avant le passage en accès privé).
+const LEGACY_HOST = "res.cloudinary.com";
+
+// Lecture d'un fichier : accès vérifié à chaque fois, puis redirection vers
+// une URL Cloudinary signée (voir server/cloudinary.js, fileUrlFor).
+// ?taille=miniature : vignette 400×400 pour la grille ; ?telecharger=1 : pièce jointe.
 router.get("/documents/:docId/fichier", async (req, res) => {
   const docId = Number(req.params.docId);
   if (!Number.isInteger(docId) || docId <= 0) return res.status(404).json({ error: "Document introuvable." });
@@ -81,25 +89,30 @@ router.get("/documents/:docId/fichier", async (req, res) => {
   }
 
   let target = null;
+  let maxAge = 0;
   if (doc.public_id) {
-    target = cloudinary.privateDownloadUrl({
-      publicId: doc.public_id,
-      resourceType: doc.resource_type,
-      format: doc.format,
-      deliveryType: doc.delivery_type,
+    const file = cloudinary.fileUrlFor(doc, {
+      taille: req.query.taille === "miniature" ? "miniature" : "original",
       attachment: req.query.telecharger === "1",
     });
-    if (!target) return res.status(503).json({ error: "Le stockage des fichiers n'est pas configuré." });
+    if (!file) return res.status(503).json({ error: "Le stockage des fichiers n'est pas configuré." });
+    target = file.url;
+    maxAge = file.maxAge;
   } else {
     // Ancien document (avant le passage en accès privé) : URL publique conservée
-    // tant que le script de migration n'a pas été lancé.
+    // tant que le script de migration n'a pas été lancé, mais seulement vers
+    // Cloudinary (jamais une redirection vers un autre site).
     try {
       const parsed = new URL(String(doc.url));
-      if (parsed.protocol === "https:") target = parsed.toString();
+      if (parsed.protocol === "https:" && parsed.hostname === LEGACY_HOST && !parsed.username && !parsed.password && !parsed.port) {
+        target = parsed.toString();
+      }
     } catch { /* adresse invalide */ }
     if (!target) return res.status(404).json({ error: "Fichier introuvable." });
   }
-  res.setHeader("Cache-Control", "no-store");
+  // Cache privé (navigateur seulement) tant que l'URL cible reste la même :
+  // la grille ne redemande pas une nouvelle URL à chaque affichage.
+  res.setHeader("Cache-Control", maxAge > 0 ? `private, max-age=${maxAge}` : "no-store");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.redirect(302, target);
 });
@@ -118,21 +131,28 @@ router.post("/documents", async (req, res) => {
   const verified = cloudinary.verifyUploadResult(Number(chantierId), file);
   if (!verified) return res.status(400).json({ error: "Fichier non reconnu (signature Cloudinary invalide)." });
 
-  const { rows } = await pool.query(
-    `INSERT INTO documents (chantier_id, lot_id, type, url, public_id, resource_type, format, delivery_type, caption, uploaded_by)
-     VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [
-      Number(chantierId),
-      lotId ? Number(lotId) : null,
-      type === "document" ? "document" : "photo",
-      verified.publicId,
-      verified.resourceType,
-      verified.format,
-      cloudinary.DELIVERY_TYPE,
-      String(caption || "").slice(0, 300),
-      req.user.id,
-    ]
-  );
+  let rows;
+  try {
+    ({ rows } = await pool.query(
+      `INSERT INTO documents (chantier_id, lot_id, type, url, public_id, resource_type, format, version, delivery_type, caption, uploaded_by)
+       VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [
+        Number(chantierId),
+        lotId ? Number(lotId) : null,
+        type === "document" ? "document" : "photo",
+        verified.publicId,
+        verified.resourceType,
+        verified.format,
+        verified.version,
+        cloudinary.DELIVERY_TYPE,
+        String(caption || "").slice(0, 300),
+        req.user.id,
+      ]
+    ));
+  } catch (err) {
+    if (err.code === "23505") return res.status(409).json({ error: "Ce fichier est déjà enregistré." });
+    throw err;
+  }
   res.status(201).json({ document: publicDocument(rows[0]) });
 });
 
@@ -145,6 +165,13 @@ router.delete("/documents/:docId", async (req, res) => {
     return res.status(403).json({ error: "Tu ne peux supprimer que tes propres fichiers." });
   }
   await pool.query("DELETE FROM documents WHERE id = $1", [docId]);
+  // Le fichier est aussi détruit chez Cloudinary. Un échec n'annule pas la
+  // suppression en base (le document a disparu de l'app) : il est journalisé
+  // pour un nettoyage manuel éventuel.
+  if (doc.public_id) {
+    const out = await cloudinary.destroyFile({ publicId: doc.public_id, resourceType: doc.resource_type, deliveryType: doc.delivery_type });
+    if (!out.ok) console.error(`[documents] Suppression Cloudinary échouée pour ${doc.resource_type}/${doc.public_id} (document #${docId}) : ${out.error || out.result}`);
+  }
   res.json({ ok: true });
 });
 

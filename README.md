@@ -164,14 +164,50 @@ service Render **existant** (Dashboard Render → ton service → Environment) :
 4. Les fichiers sont envoyés avec une signature du serveur et stockés en accès
    privé : aucun « upload preset » non signé n'est nécessaire. S'il en existe
    un (ancienne version), supprime-le dans **Settings → Upload → Upload presets**
-   ainsi que les variables `VITE_CLOUDINARY_*` sur Render. Les anciens fichiers
-   publics se passent en privé avec `node scripts/migrer-cloudinary-prive.js`
-   (simulation) puis `--appliquer`.
+   ainsi que les variables `VITE_CLOUDINARY_*` sur Render (voir les étapes
+   détaillées ci-dessous).
 5. Ajoute ces trois variables au service Render existant, puis redéploie
    (un simple `git push` déclenche déjà un redéploiement si l'auto-deploy est
    actif). Toutes les autres variables (`DATABASE_URL`, `JWT_SECRET`,
    `ADMIN_USERNAME`, etc.), l'URL du service et les comptes existants restent
    inchangés.
+
+### Passage des fichiers de chantier en accès privé (déploiement)
+
+Photos et documents sont envoyés avec une signature du serveur et stockés en
+accès « authenticated » : ils ne s'ouvrent que via l'app (contrôle d'accès au
+chantier à chaque lecture). Les photos passent par une URL signée du CDN
+(miniature 400×400 dans la grille, original au clic) ; les autres fichiers
+(PDF, Word, Excel, CSV, TXT, ZIP) par une URL de téléchargement qui expire en
+5 à 10 minutes. Formats acceptés : jpg, jpeg, png, heic, webp, pdf, doc, docx,
+xls, xlsx, csv, txt, zip.
+
+Étapes, dans cet ordre :
+
+1. Sur Render, ajouter `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` et
+   `CLOUDINARY_API_SECRET` **avant** de fusionner (sinon l'envoi de fichiers
+   répond « stockage non configuré »).
+2. Fusionner et laisser Render redéployer. Au démarrage, la table `documents`
+   reçoit ses nouvelles colonnes et un index unique sur `public_id`
+   (automatique, sans toucher aux données).
+3. Test réel juste après le déploiement, sur un chantier de test :
+   - envoyer une photo : la miniature s'affiche, le clic ouvre l'original ;
+   - envoyer un **PDF** : le clic doit ouvrir/télécharger le PDF. Si
+     Cloudinary répond une erreur, vérifier **Settings → Security → « Allow
+     delivery of PDF and ZIP files »** ;
+   - se déconnecter et rouvrir l'adresse d'un fichier : refus (401) ;
+   - supprimer ces fichiers de test (ils sont aussi effacés chez Cloudinary).
+4. Dans Cloudinary, **Settings → Upload → Upload presets** : supprimer
+   l'ancien preset non signé (ex. `chantiers`) ou le passer en « Signed ».
+   Tant qu'il existe, n'importe qui peut encore déposer des fichiers sur le
+   compte. Supprimer ensuite `VITE_CLOUDINARY_CLOUD_NAME` et
+   `VITE_CLOUDINARY_UPLOAD_PRESET` sur Render.
+5. Sauvegarder la base (branche de sauvegarde Neon, ou
+   `pg_dump "$DATABASE_URL" -t documents`), puis passer les anciens fichiers
+   publics en privé : `node scripts/migrer-cloudinary-prive.js` (simulation),
+   puis `node scripts/migrer-cloudinary-prive.js --appliquer`. Le script est
+   relançable sans risque. D'ici là, les anciens fichiers restent lisibles
+   via leur adresse publique.
 
 Au premier démarrage après ce déploiement, le serveur crée automatiquement
 les nouvelles tables du module Chantiers (elles n'existent pas encore dans la

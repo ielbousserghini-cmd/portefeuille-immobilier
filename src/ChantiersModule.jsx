@@ -798,7 +798,7 @@ function DocumentsTab({ chantierId, lots, currentUser, canWrite, flashError }) {
     setUploading(true);
     try {
       const uploaded = await uploadToCloudinary(file, { chantierId, lotId: lotId || null });
-      const type = file.type.startsWith("image/") ? "photo" : "document";
+      const type = uploaded.resource_type === "image" ? "photo" : "document";
       await api.addDocument({ chantierId, lotId: lotId || null, type, cloudinary: uploaded, caption: file.name });
       load();
     } catch (err) {
@@ -827,7 +827,7 @@ function DocumentsTab({ chantierId, lots, currentUser, canWrite, flashError }) {
           </select>
           <label style={{ ...styles.secondaryBtn, cursor: uploading ? "default" : "pointer" }}>
             <Upload size={14} /> {uploading ? "Envoi..." : "Ajouter une photo / un document"}
-            <input type="file" accept="image/*,.pdf,.doc,.docx" onChange={handleFile} style={{ display: "none" }} disabled={uploading} />
+            <input type="file" accept=".jpg,.jpeg,.png,.heic,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" onChange={handleFile} style={{ display: "none" }} disabled={uploading} />
           </label>
         </div>
       )}
@@ -844,7 +844,7 @@ function DocumentsTab({ chantierId, lots, currentUser, canWrite, flashError }) {
           {docs.map((d) => (
             <div key={d.id} style={styles.photoCard}>
               {d.type === "photo" ? (
-                <a href={d.file_url} target="_blank" rel="noreferrer"><img src={d.file_url} alt={d.caption} style={styles.photoImg} /></a>
+                <a href={d.file_url} target="_blank" rel="noreferrer"><img src={`${d.file_url}?taille=miniature`} loading="lazy" alt={d.caption} style={styles.photoImg} /></a>
               ) : (
                 <a href={d.file_url} target="_blank" rel="noreferrer" style={{ ...styles.photoImg, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
                   Document

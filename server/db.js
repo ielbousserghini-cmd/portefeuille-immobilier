@@ -171,6 +171,8 @@ async function migrate() {
     ALTER TABLE documents ADD COLUMN IF NOT EXISTS resource_type TEXT;
     ALTER TABLE documents ADD COLUMN IF NOT EXISTS format TEXT;
     ALTER TABLE documents ADD COLUMN IF NOT EXISTS delivery_type TEXT;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS version TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS documents_public_id_unique ON documents (public_id) WHERE public_id IS NOT NULL;
   `);
 
   // Donne à un utilisateur "employe" (rôle global côté Loyers) un accès et un

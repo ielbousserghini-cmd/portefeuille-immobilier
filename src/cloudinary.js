@@ -6,7 +6,8 @@ import { api } from "./api";
 // il ne se lit ensuite que via /api/documents/:id/fichier.
 // Renvoie la réponse de Cloudinary à transmettre telle quelle à api.addDocument.
 export async function uploadToCloudinary(file, { chantierId, lotId }) {
-  const { upload } = await api.signDocumentUpload(chantierId, lotId);
+  const extension = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase();
+  const { upload } = await api.signDocumentUpload(chantierId, lotId, extension);
   const form = new FormData();
   form.append("file", file);
   form.append("api_key", upload.apiKey);
