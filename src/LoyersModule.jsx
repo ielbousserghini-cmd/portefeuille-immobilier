@@ -2016,7 +2016,7 @@ function AiUnitsPreview({ rows, setRows, existingUnits }) {
   return (
     <>
       <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginTop: 10, maxHeight: 420, overflowY: "auto" }}>
-        <table style={{ ...styles.table, marginTop: 0, minWidth: 1000 }}>
+        <table data-mobile="scroll" style={{ ...styles.table, marginTop: 0, minWidth: 1000 }}>
           <thead>
             <tr>
               <th style={styles.th}>Local</th>
@@ -2131,8 +2131,8 @@ function AiExcelImportModal({ properties, presetTargetId, initialFile, onClose, 
   const wide = { ...styles.modal, width: 960, maxWidth: "96vw" };
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={wide} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Importer un fichier avec l'IA">
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={wide} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Importer un fichier avec l'IA">
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>{lockedTarget && target ? `Importer des locaux dans ${target.name}` : "Importer un fichier avec l'IA"}</div>
           <button type="button" style={styles.iconBtn} onClick={onClose} aria-label="Fermer"><X size={16} /></button>
@@ -2343,8 +2343,8 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
   }
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={isProperty && form.importedUnits?.length ? { ...styles.modal, width: 960, maxWidth: "96vw" } : styles.modal} onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={isProperty && form.importedUnits?.length ? { ...styles.modal, width: 960, maxWidth: "96vw" } : styles.modal} onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>
             {isProperty ? (form.id ? "Modifier le bien" : "Nouveau bien") : isBulk ? "Ajouter plusieurs locaux d'un coup" : isExpense ? "Nouvelle charge" : (form.id ? "Modifier le local" : "Nouveau local")}
@@ -2707,8 +2707,8 @@ Le bailleur`;
   }
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>Quittance de loyer</div>
           <button type="button" style={styles.iconBtn} onClick={onClose}><X size={16} /></button>
@@ -2752,8 +2752,8 @@ function TurnoverModal({ data, onClose, onSave }) {
   }
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>Chiffre d'affaires — {unit.tenant}</div>
           <IconBtn onClick={onClose} title="Fermer"><X size={14} /></IconBtn>
@@ -2924,8 +2924,8 @@ function LetterModal({ data, onClose }) {
   }
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={{ ...styles.modal, width: 540 }} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={{ ...styles.modal, width: 540 }} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>Courrier pour loyer impayé</div>
           <button type="button" style={styles.iconBtn} onClick={onClose}><X size={16} /></button>
@@ -3002,8 +3002,8 @@ Le bailleur`;
   const exceedsCap = info.capRate !== null && Number(newRent) > Math.round(unit.rent * (1 + info.capRate)) + 1;
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={{ ...styles.modal, width: 480 }} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={{ ...styles.modal, width: 480 }} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>Révision de loyer</div>
           <button type="button" style={styles.iconBtn} onClick={onClose}><X size={16} /></button>

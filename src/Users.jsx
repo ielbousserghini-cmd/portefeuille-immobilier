@@ -395,8 +395,8 @@ function AssignmentsModal({ user, chantierRole, chantiers, onClose }) {
   const lots = lotsByChantier[chantierId] || [];
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>Affectations — {user.name}</div>
           <IconBtn onClick={onClose}><X size={14} /></IconBtn>

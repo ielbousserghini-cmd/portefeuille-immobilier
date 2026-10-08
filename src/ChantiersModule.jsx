@@ -379,8 +379,8 @@ function LotModal({ initial, onClose, onSave }) {
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>{initial ? "Modifier le lot" : "Nouveau lot"}</div>
           <IconBtn onClick={onClose}><X size={14} /></IconBtn>
@@ -410,8 +410,8 @@ function AvancementModal({ lot, onClose, onSave }) {
   const [percentage, setPercentage] = useState(lot.avancement ?? 0);
   const [comment, setComment] = useState("");
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>Mise à jour — {lot.name}</div>
           <IconBtn onClick={onClose}><X size={14} /></IconBtn>
@@ -555,8 +555,8 @@ function PlanningTaskModal({ initial, lots, onClose, onSave }) {
   const [status, setStatus] = useState(initial?.status || "a_venir");
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>{initial ? "Modifier la tâche" : "Nouvelle tâche"}</div>
           <IconBtn onClick={onClose}><X size={14} /></IconBtn>
@@ -729,8 +729,8 @@ function BudgetLineModal({ initial, onClose, onSave }) {
   const [date, setDate] = useState(initial?.date?.slice(0, 10) || "");
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>{initial ? "Modifier la ligne" : "Nouvelle ligne budgétaire"}</div>
           <IconBtn onClick={onClose}><X size={14} /></IconBtn>
@@ -879,8 +879,8 @@ function ChantierModal({ initial, onClose, onSave }) {
   const [status, setStatus] = useState(initial?.status || "en_cours");
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div className="sheet-overlay" style={styles.overlay} onClick={onClose}>
+      <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>{initial ? "Modifier le chantier" : "Nouveau chantier"}</div>
           <IconBtn onClick={onClose}><X size={14} /></IconBtn>

@@ -19,6 +19,9 @@ import AssistantPage from "./AssistantPage.jsx";
 // qu'à un seul des deux modules (par ex. un chef de chantier sans accès
 // Loyers), et dans ce cas la section correspondante n'apparaît simplement pas
 // dans la Sidebar (pas d'état "accès refusé" affiché).
+// Libellés courts de la barre d'onglets du bas, sur téléphone.
+const SHORT_LABELS = { assistant: "Assistant", loyers: "Loyers", chantiers: "Chantiers", utilisateurs: "Équipe" };
+
 const SECTION_LABELS = {
   assistant: "Assistant",
   loyers: "Suivi loyers",
@@ -69,6 +72,30 @@ export default function ExtranetShell({ currentUser, onLogout }) {
     window.scrollTo(0, 0);
   }, [canSee]);
 
+  // Sur téléphone, les tableaux s'affichent en fiches : chaque cellule reçoit
+  // le nom de sa colonne (data-label), affiché par le CSS mobile.
+  useEffect(() => {
+    const root = document.querySelector(".main-content");
+    if (!root) return undefined;
+    let frame = 0;
+    const label = () => {
+      frame = 0;
+      root.querySelectorAll("table:not(.ledger-table):not([data-mobile='scroll'])").forEach((table) => {
+        const heads = [...table.querySelectorAll("thead th")].map((th) => th.textContent.trim());
+        table.querySelectorAll("tbody tr").forEach((tr) => {
+          [...tr.children].forEach((td, i) => {
+            const text = heads[i] || "";
+            if (td.getAttribute("data-label") !== text) td.setAttribute("data-label", text);
+          });
+        });
+      });
+    };
+    const observer = new MutationObserver(() => { if (!frame) frame = requestAnimationFrame(label); });
+    observer.observe(root, { childList: true, subtree: true });
+    label();
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, []);
+
   useEffect(() => {
     if (fromUrl.section) window.history.replaceState(null, "", window.location.pathname);
     // Toucher une notification alors que l'app est déjà ouverte.
@@ -97,12 +124,49 @@ export default function ExtranetShell({ currentUser, onLogout }) {
       />
       <main className="main-content" style={styles.main}>
         <Topbar section={section} />
+        <MobileHeader section={section} currentUser={currentUser} isAdmin={isLoyersAdmin} theme={theme} toggleTheme={toggleTheme} onLogout={onLogout} />
         {section === "assistant" && isLoyersAdmin && <AssistantPage currentUser={currentUser} onNavigate={navigate} />}
         {section === "loyers" && hasLoyersAccess && <LoyersModule key={intentKey} currentUser={currentUser} intent={loyersIntent} />}
         {section === "chantiers" && hasChantiersAccess && <ChantiersModule currentUser={currentUser} />}
         {section === "utilisateurs" && isLoyersAdmin && <UsersPage currentUser={currentUser} />}
       </main>
     </div>
+  );
+}
+
+// En-tête d'app sur téléphone : logo, titre de la page, menu du compte.
+function MobileHeader({ section, currentUser, isAdmin, theme, toggleTheme, onLogout }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <header className="mobile-header">
+        <div style={{ ...styles.brandMark, width: 30, height: 30, borderRadius: 8 }}><Building2 size={15} strokeWidth={2} /></div>
+        <div className="mobile-title">{SECTION_LABELS[section]}</div>
+        <button type="button" className="mobile-avatar" onClick={() => setOpen(true)} aria-label="Mon compte">{initials(currentUser.name)}</button>
+      </header>
+      {open && (
+        <div className="sheet-overlay" style={styles.overlay} onClick={() => setOpen(false)}>
+          <div className="sheet" style={styles.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Mon compte">
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "20px 22px 14px" }}>
+              <div style={{ ...styles.avatar, width: 44, height: 44, fontSize: 15 }}>{initials(currentUser.name)}</div>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 16 }}>{currentUser.name}</div>
+                <div style={{ fontSize: 13, color: "var(--text-dim)" }}>{isAdmin ? "Administrateur" : "Employé"}</div>
+              </div>
+            </div>
+            <div style={{ padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+              <button type="button" className="sheet-row" onClick={toggleTheme}>
+                {theme === "dark" ? <Sun size={18} strokeWidth={1.75} /> : <Moon size={18} strokeWidth={1.75} />}
+                {theme === "dark" ? "Thème clair" : "Thème sombre"}
+              </button>
+              <button type="button" className="sheet-row sheet-row-danger" onClick={onLogout}>
+                <LogOut size={18} strokeWidth={1.75} /> Se déconnecter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -164,7 +228,8 @@ function Sidebar({ section, setSection, currentUser, isLoyersAdmin, hasLoyersAcc
                   style={{ ...styles.navItem, ...(active ? styles.navItemActive : {}) }}
                 >
                   <Icon size={17} strokeWidth={1.75} color={active ? "var(--accent)" : "currentColor"} />
-                  <span>{it.label}</span>
+                  <span className="nav-long">{it.label}</span>
+                  <span className="nav-short">{SHORT_LABELS[it.id]}</span>
                 </button>
               );
             })}
