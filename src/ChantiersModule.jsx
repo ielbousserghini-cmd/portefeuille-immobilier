@@ -78,7 +78,7 @@ export default function ChantiersModule({ currentUser }) {
 
   return (
     <>
-      {error && <div style={styles.errorBanner}>{error}</div>}
+      {error && <div role="alert" style={styles.errorBanner}><AlertTriangle size={16} strokeWidth={2} color="var(--bad)" style={{ flexShrink: 0 }} />{error}</div>}
 
       {!selectedId && (
         <ChantiersList
@@ -107,8 +107,8 @@ export default function ChantiersModule({ currentUser }) {
 
 function ChantiersList({ chantiers, isAdmin, onOpen, onNew }) {
   return (
-    <div style={styles.page}>
-      <header style={styles.pageHeaderRow}>
+    <div className="page" style={styles.page}>
+      <header className="page-header-row" style={styles.pageHeaderRow}>
         <div>
           <div style={styles.eyebrow}>Vue d'ensemble</div>
           <h1 style={styles.h1}>Chantiers</h1>
@@ -121,7 +121,7 @@ function ChantiersList({ chantiers, isAdmin, onOpen, onNew }) {
       </header>
 
       {chantiers === null ? (
-        <div style={styles.emptyNote}>Chargement...</div>
+        <div style={styles.loadingText}><span className="spinner" /> Chargement…</div>
       ) : chantiers.length === 0 ? (
         <div style={styles.emptyState}>
           <HardHat size={28} strokeWidth={1.5} color="var(--text-dim)" />
@@ -135,9 +135,12 @@ function ChantiersList({ chantiers, isAdmin, onOpen, onNew }) {
           {chantiers.map((c) => {
             const status = STATUS_LABELS[c.status] || STATUS_LABELS.en_cours;
             return (
-              <div key={c.id} style={{ ...styles.card, cursor: "pointer" }} onClick={() => onOpen(c.id)}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14.5 }}>{c.name}</div>
+              <div key={c.id} className="card-interactive" style={{ ...styles.card, cursor: "pointer" }} onClick={() => onOpen(c.id)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <div style={styles.buildingIconWrap}><HardHat size={18} strokeWidth={1.75} color="var(--accent)" /></div>
+                    <div style={{ fontWeight: 600, fontSize: 14.5, letterSpacing: "-0.01em" }}>{c.name}</div>
+                  </div>
                   <span style={styles.badge(status.tone)}>{status.label}</span>
                 </div>
                 {c.address && (
@@ -145,9 +148,12 @@ function ChantiersList({ chantiers, isAdmin, onOpen, onNew }) {
                     <MapPin size={12} /> {c.address}
                   </div>
                 )}
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-dim)", marginBottom: 7, marginTop: c.address ? 0 : 6 }}>
+                  <span>Avancement global</span>
+                  <span style={{ fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{c.avancement_global}%</span>
+                </div>
+                <div style={{ display: "flex" }}>
                   <div style={styles.progressTrack}><div style={styles.progressFill(c.avancement_global)} /></div>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--accent)" }}>{c.avancement_global}%</span>
                 </div>
               </div>
             );
@@ -178,7 +184,7 @@ function ChantierDetail({ chantierId, currentUser, onBack, flashError }) {
 
   useEffect(() => { load(); }, [chantierId]);
 
-  if (!data) return <div style={styles.page}><div style={styles.emptyNote}>Chargement...</div></div>;
+  if (!data) return <div style={styles.page}><div style={styles.loadingText}><span className="spinner" /> Chargement…</div></div>;
 
   const { chantier, lots, canSeeBudget } = data;
   const status = STATUS_LABELS[chantier.status] || STATUS_LABELS.en_cours;
@@ -191,12 +197,12 @@ function ChantierDetail({ chantierId, currentUser, onBack, flashError }) {
   ];
 
   return (
-    <div style={styles.page}>
+    <div className="page" style={styles.page}>
       <button style={styles.backLink} onClick={onBack}>
         <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} /> Tous les chantiers
       </button>
 
-      <header style={styles.pageHeaderRow}>
+      <header className="page-header-row" style={styles.pageHeaderRow}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
             <span style={styles.eyebrow}>{chantier.address || "Chantier"}</span>
@@ -216,21 +222,20 @@ function ChantierDetail({ chantierId, currentUser, onBack, flashError }) {
         )}
       </header>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 20, borderBottom: "1px solid var(--border)", paddingBottom: 10 }}>
+      <div role="tablist" style={{ ...styles.tabBar, marginBottom: 22 }}>
         {tabs.map((t) => {
           const Icon = t.icon;
           const active = subtab === t.id;
           return (
             <button
               key={t.id}
+              role="tab"
+              aria-selected={active}
               onClick={() => setSubtab(t.id)}
-              style={{
-                ...styles.ghostBtn,
-                borderColor: active ? "var(--accent)" : "var(--border)",
-                color: active ? "var(--accent)" : "var(--text-dim)",
-              }}
+              className={active ? "tab-btn is-active" : "tab-btn"}
+              style={{ ...styles.tab, ...(active ? styles.tabActive : {}) }}
             >
-              <Icon size={13} /> {t.label}
+              <Icon size={15} strokeWidth={1.75} color={active ? "var(--accent)" : "currentColor"} /> {t.label}
             </button>
           );
         })}

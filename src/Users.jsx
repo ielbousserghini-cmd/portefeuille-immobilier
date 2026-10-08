@@ -20,8 +20,8 @@ const localStyles = {
     padding: "3px 8px",
     borderRadius: 999,
     fontWeight: 600,
-    color: role === "admin" ? "#14171B" : "var(--text)",
-    background: role === "admin" ? "var(--accent)" : "var(--surface-2)",
+    color: role === "admin" ? "var(--accent)" : "var(--text-dim)",
+    background: role === "admin" ? "var(--accent-soft)" : "var(--surface-2)",
   }),
   activeTag: (active) => ({
     fontSize: 12,

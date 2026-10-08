@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
-import { fontImport } from "./theme.jsx";
+import { Building2 } from "lucide-react";
+import { fontImport, styles } from "./theme.jsx";
 import Login from "./Login.jsx";
 import ExtranetShell from "./ExtranetShell.jsx";
 
 const loadingStyle = {
   minHeight: "100vh",
-  background: "var(--bg, #14171B)",
+  background: "var(--bg)",
   display: "flex",
+  flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  color: "#8B9096",
-  fontFamily: "Inter, sans-serif",
-  fontSize: 14,
+  gap: 14,
+  color: "var(--text-dim)",
+  fontFamily: "var(--font-body)",
+  fontSize: 13.5,
 };
 
 export default function AppRoot() {
@@ -44,7 +47,12 @@ export default function AppRoot() {
     <>
       <style>{fontImport}</style>
       {!checked ? (
-        <div style={loadingStyle}>Chargement…</div>
+        <div style={loadingStyle}>
+          <div style={{ ...styles.brandMark, width: 40, height: 40, borderRadius: 11, animation: "pf-pulse 1.4s ease-in-out infinite" }}>
+            <Building2 size={19} strokeWidth={2} />
+          </div>
+          Chargement…
+        </div>
       ) : user ? (
         <ExtranetShell currentUser={user} onLogout={handleLogout} />
       ) : (

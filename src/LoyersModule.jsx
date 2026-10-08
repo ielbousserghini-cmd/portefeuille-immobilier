@@ -264,7 +264,7 @@ export default function LoyersModule({ currentUser }) {
     return (
       <div style={styles.loadingScreen}>
         <style>{fontImport}</style>
-        <div style={styles.loadingText}>Chargement du portefeuille…</div>
+        <div style={styles.loadingText}><span className="spinner" /> Chargement du portefeuille…</div>
       </div>
     );
   }
@@ -273,7 +273,7 @@ export default function LoyersModule({ currentUser }) {
     <>
       <style>{fontImport}</style>
       <LoyersNav tab={tab} setTab={setTab} isAdmin={isAdmin} onExport={exportBackup} onImport={importBackup} />
-      {error && <div style={styles.errorBanner}>{error}</div>}
+      {error && <div role="alert" style={styles.errorBanner}><AlertTriangle size={16} strokeWidth={2} color="var(--bad)" style={{ flexShrink: 0 }} />{error}</div>}
       {tab === "dashboard" && isAdmin && <Dashboard stats={stats} properties={properties} allUnits={allUnits} expenses={expenses} setModal={setModal} />}
       {tab === "biens" && (
         <Biens
@@ -348,43 +348,34 @@ function LoyersNav({ tab, setTab, isAdmin, onExport, onImport }) {
     e.target.value = "";
   }
   return (
-    <div
-      className="page-header-row"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: 8,
-        padding: "24px 36px 14px",
-        borderBottom: "1px solid var(--border)",
-        maxWidth: 1080,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1 }}>
+    <div className="subnav" style={styles.subnav}>
+      <div role="tablist" style={styles.tabBar}>
         {items.map((it) => {
           const Icon = it.icon;
           const active = tab === it.id;
           return (
             <button
               key={it.id}
+              role="tab"
+              aria-selected={active}
               onClick={() => setTab(it.id)}
               title={it.label}
-              style={{ ...styles.navItem, ...(active ? styles.navItemActive : {}) }}
+              className={active ? "tab-btn is-active" : "tab-btn"}
+              style={{ ...styles.tab, ...(active ? styles.tabActive : {}) }}
             >
-              <Icon size={17} strokeWidth={1.75} />
+              <Icon size={15} strokeWidth={1.75} color={active ? "var(--accent)" : "currentColor"} />
               <span>{it.label}</span>
             </button>
           );
         })}
       </div>
       {isAdmin && (
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, paddingBottom: 8 }}>
           <button style={styles.backupBtn} onClick={onExport} title="Télécharger une sauvegarde de toutes tes données">
             <Download size={15} strokeWidth={1.75} />
             <span>Exporter</span>
           </button>
-          <label style={styles.backupBtn} title="Restaurer depuis un fichier de sauvegarde">
+          <label role="button" style={styles.backupBtn} title="Restaurer depuis un fichier de sauvegarde">
             <Upload size={15} strokeWidth={1.75} />
             <span>Importer</span>
             <input type="file" accept="application/json" onChange={handleFileChange} style={{ display: "none" }} />
@@ -460,10 +451,10 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
       </header>
 
       <div className="kpi-grid" style={styles.kpiGrid}>
-        <KpiCard label="Loyers encaissés — ce mois" value={fmt(stats.collected)} accent="good" />
-        <KpiCard label="Loyers attendus — ce mois" value={fmt(stats.expected)} accent="neutral" />
-        <KpiCard label="Impayés en cours" value={String(stats.unpaid.length)} accent={stats.unpaid.length ? "bad" : "good"} suffix="local(aux)" />
-        <KpiCard label="Taux d'occupation" value={`${stats.occupancyRate}%`} accent="neutral" />
+        <KpiCard icon={CheckCircle2} label="Loyers encaissés — ce mois" value={fmt(stats.collected)} accent="good" />
+        <KpiCard icon={Wallet} label="Loyers attendus — ce mois" value={fmt(stats.expected)} accent="neutral" />
+        <KpiCard icon={AlertTriangle} label="Impayés en cours" value={String(stats.unpaid.length)} accent={stats.unpaid.length ? "bad" : "good"} suffix="local(aux)" />
+        <KpiCard icon={Building2} label="Taux d'occupation" value={`${stats.occupancyRate}%`} accent="neutral" progress={stats.occupancyRate} />
       </div>
 
       <div className="two-col" style={styles.twoCol}>
@@ -507,7 +498,7 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
             <ul style={styles.unpaidList}>
               {stats.unpaid.map((u) => (
                 <li key={u.id} style={styles.unpaidItem}>
-                  <AlertTriangle size={15} strokeWidth={1.75} color="var(--bad)" />
+                  <ListIcon icon={AlertTriangle} tone="bad" />
                   <div>
                     <div style={styles.unpaidName}>{u.tenant} — {u.name}</div>
                     <div style={styles.unpaidMeta}>{u.propertyName} · {fmt(u.rent)}</div>
@@ -530,7 +521,7 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
                 const daysLeft = Math.ceil((u.endDate - today) / 86400000);
                 return (
                   <li key={u.id} style={styles.unpaidItem}>
-                    <CalendarClock size={15} strokeWidth={1.75} color={daysLeft < 0 ? "var(--bad)" : "var(--accent)"} />
+                    <ListIcon icon={CalendarClock} tone={daysLeft < 0 ? "bad" : "warn"} />
                     <div>
                       <div style={styles.unpaidName}>{u.tenant} — {u.name}</div>
                       <div style={styles.unpaidMeta}>
@@ -552,7 +543,7 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
             <ul style={styles.unpaidList}>
               {prolongedVacancies.map((u) => (
                 <li key={u.id} style={styles.unpaidItem}>
-                  <DoorOpen size={15} strokeWidth={1.75} color="var(--bad)" />
+                  <ListIcon icon={DoorOpen} tone="bad" />
                   <div>
                     <div style={styles.unpaidName}>{u.name}</div>
                     <div style={styles.unpaidMeta}>{u.propertyName} · {u.vacantDays !== null ? `vacant depuis ${u.vacantDays} j` : "vacant, date inconnue"}</div>
@@ -574,7 +565,7 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
               const property = (properties || []).find((p) => p.id === u.propertyId);
               return (
                 <li key={u.id} style={styles.unpaidItem}>
-                  <Percent size={15} strokeWidth={1.75} color="var(--accent)" />
+                  <ListIcon icon={Percent} tone="warn" />
                   <div style={{ flex: 1 }}>
                     <div style={styles.unpaidName}>{u.tenant} — {u.name}</div>
                     <div style={styles.unpaidMeta}>
@@ -605,7 +596,7 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
               <div style={styles.globalYieldBlock}>
                 <div>
                   <div style={styles.kpiLabel}>Rendement global du portefeuille</div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 30, color: "var(--accent)" }}>{globalYield.pct.toFixed(1)}%</div>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 34, fontWeight: 600, letterSpacing: "-0.03em", color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>{globalYield.pct.toFixed(1)}%</div>
                   <div style={styles.emptyNote}>{fmt(globalYield.totalRevenu)} de loyers annuels ÷ {fmt(globalYield.totalValeur)} de valeur estimée, sur {globalYield.count} bien(s) renseigné(s) sur {properties.length}.</div>
                 </div>
               </div>
@@ -638,6 +629,15 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
   );
 }
 
+function ListIcon({ icon: Icon, tone }) {
+  const t = styles.badge(tone);
+  return (
+    <div style={{ width: 30, height: 30, borderRadius: 8, background: t.background, color: t.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <Icon size={15} strokeWidth={1.9} />
+    </div>
+  );
+}
+
 function annualRent(property) {
   return (property.units || []).filter((u) => u.tenant && u.tenant.trim()).reduce((s, u) => s + (Number(u.rent) || 0) * 12, 0);
 }
@@ -647,13 +647,22 @@ function calcYield(property) {
   return (annualRent(property) / val) * 100;
 }
 
-function KpiCard({ label, value, accent, suffix }) {
+function KpiCard({ icon: Icon, label, value, accent, suffix, progress }) {
   const colorVar = accent === "good" ? "var(--good)" : accent === "bad" ? "var(--bad)" : "var(--accent)";
+  const softVar = accent === "good" ? "var(--good-soft)" : accent === "bad" ? "var(--bad-dim)" : "var(--accent-soft)";
   return (
     <div style={styles.kpiCard}>
-      <div style={styles.kpiLabel}>{label}</div>
-      <div style={{ ...styles.kpiValue, color: colorVar }}>{value}</div>
+      <div style={styles.kpiHead}>
+        <div style={{ ...styles.kpiLabel, marginBottom: 0 }}>{label}</div>
+        {Icon && <div style={{ ...styles.kpiIcon, background: softVar, color: colorVar }}><Icon size={15} strokeWidth={2} /></div>}
+      </div>
+      <div className="kpi-value" style={styles.kpiValue}>{value}</div>
       {suffix && <div style={styles.kpiSuffix}>{suffix}</div>}
+      {progress !== undefined && (
+        <div style={{ ...styles.progressTrack, flex: "none", marginTop: 12 }}>
+          <div style={styles.progressFill(progress, colorVar)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -711,7 +720,7 @@ function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddP
             const units = p.units || [];
             const occupied = units.filter((u) => u.tenant && u.tenant.trim()).length;
             return (
-              <div key={p.id} style={styles.buildingCard} onClick={() => setSelectedPropertyId(p.id)}>
+              <div key={p.id} className="card-interactive" style={styles.buildingCard} onClick={() => setSelectedPropertyId(p.id)}>
                 <div style={styles.buildingCardTop}>
                   <div style={styles.buildingIconWrap}><Icon size={20} strokeWidth={1.75} color="var(--accent)" /></div>
                   {isAdmin && (
@@ -985,7 +994,7 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
                           style={{
                             ...styles.ledgerDot,
                             background: isFuture ? "transparent" : paid ? "var(--good)" : "var(--bad-dim)",
-                            border: isFuture ? "1px dashed var(--border)" : "none",
+                            border: isFuture ? "1px dashed var(--border-strong)" : paid ? "1px solid var(--good)" : "1px solid color-mix(in srgb, var(--bad) 45%, transparent)",
                             cursor: isFuture || !isAdmin ? "default" : "pointer",
                           }}
                         />
@@ -1000,8 +1009,8 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
       )}
       <div style={styles.legend}>
         <span style={styles.legendItem}><i style={{ ...styles.legendDot, background: "var(--good)" }} /> Payé</span>
-        <span style={styles.legendItem}><i style={{ ...styles.legendDot, background: "var(--bad-dim)" }} /> Impayé</span>
-        <span style={styles.legendItem}><i style={{ ...styles.legendDot, border: "1px dashed var(--border)", background: "transparent" }} /> À venir</span>
+        <span style={styles.legendItem}><i style={{ ...styles.legendDot, background: "var(--bad-dim)", border: "1px solid color-mix(in srgb, var(--bad) 45%, transparent)" }} /> Impayé</span>
+        <span style={styles.legendItem}><i style={{ ...styles.legendDot, border: "1px dashed var(--border-strong)", background: "transparent" }} /> À venir</span>
       </div>
     </div>
   );
