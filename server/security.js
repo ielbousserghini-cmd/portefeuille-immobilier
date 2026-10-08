@@ -85,7 +85,7 @@ function securityHeaders({ distDir }) {
 // fenêtre, les tentatives sont refusées jusqu'à la fin de la fenêtre. En
 // mémoire (un seul serveur) : suffisant ici, remis à zéro au redémarrage.
 const WINDOW_MS = 15 * 60 * 1000;
-const MAX_FAILS_PER_IP = 20;
+const MAX_FAILS_PER_IP = 50;
 const MAX_FAILS_PER_USER = 8;
 const fails = new Map(); // clé -> { count, until }
 

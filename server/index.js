@@ -23,9 +23,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const distDir = path.join(__dirname, "..", "dist");
 
-// Render place le serveur derrière un proxy : nécessaire pour connaître la
-// vraie adresse IP des visiteurs (limitation des tentatives de connexion).
-app.set("trust proxy", 1);
+// Render place le serveur derrière plusieurs proxys : on lit l'adresse du
+// visiteur dans X-Forwarded-For. Elle peut être falsifiée, c'est pourquoi la
+// limite stricte de tentatives porte sur l'identifiant (voir security.js) et
+// la limite par adresse IP reste large (elle ne doit jamais bloquer tous les
+// employés à la fois si plusieurs passent par la même adresse).
+app.set("trust proxy", true);
 app.disable("x-powered-by");
 app.use(securityHeaders({ distDir }));
 
