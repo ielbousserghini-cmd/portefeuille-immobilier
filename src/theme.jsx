@@ -155,6 +155,8 @@ button[style*="background: var(--primary)"]:not(:disabled):hover { box-shadow: n
 .card-interactive:hover { border-color: var(--border-strong) !important; box-shadow: var(--shadow-md) !important; transform: translateY(-2px); }
 tbody tr > td { transition: background-color .12s; }
 tbody tr:hover > td { background-color: var(--hover); }
+tbody tr.ledger-group:hover > td { background-color: color-mix(in srgb, var(--surface-2) 70%, var(--surface)); }
+tbody tr.ledger-group button:hover { box-shadow: none; }
 a { color: var(--accent); }
 
 @keyframes pf-fade { from { opacity: 0; } to { opacity: 1; } }

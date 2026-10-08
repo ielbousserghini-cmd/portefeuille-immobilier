@@ -1368,7 +1368,10 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
   );
 }
 
-const ledgerGroupStyle = { padding: "9px 16px", fontSize: 12.5, fontWeight: 600, color: "var(--accent)", background: "var(--surface-2)", borderBottom: "1px solid var(--border)", textAlign: "left" };
+// Sous-catégories de la grille : un en-tête discret par immeuble, puis ses
+// locaux en retrait, rattachés par un fin trait vertical.
+const ledgerGroupStyle = { padding: 0, background: "color-mix(in srgb, var(--surface-2) 70%, var(--surface))", borderBottom: "1px solid var(--border)", borderTop: "1px solid var(--border)", textAlign: "left" };
+const ledgerGroupBtn = { position: "sticky", left: 0, display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 16px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-body)", color: "var(--text)", fontSize: 13, fontWeight: 600 };
 
 function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, canTogglePayment }) {
   const occupied = allUnits.filter((u) => u.tenant && u.tenant.trim());
@@ -1386,8 +1389,18 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
       }
       g.units.push(u);
     });
+    list.forEach((g) => g.units.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr", { numeric: true })));
     return list;
   }, [occupied]);
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  function toggleGroup(id) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  const thisPeriod = periodKey(new Date().getFullYear(), new Date().getMonth());
   return (
     <div className="page" style={styles.page}>
       <header className="page-header-row" style={styles.pageHeaderRow}>
@@ -1420,18 +1433,24 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
             <tbody>
               {groups.map((g) => (
                 <Fragment key={g.id}>
-                <tr>
+                <tr className="ledger-group">
                   <td colSpan={MOIS.length + 1} style={ledgerGroupStyle}>
-                    <span style={{ position: "sticky", left: 16 }}>
-                      {g.name} <span style={{ color: "var(--text-dim)", fontWeight: 500 }}>· {g.units.length} local(aux)</span>
-                    </span>
+                    <button type="button" style={ledgerGroupBtn} onClick={() => toggleGroup(g.id)} aria-expanded={!collapsed.has(g.id)}>
+                      <ChevronDown size={14} strokeWidth={2} color="var(--text-dim)" style={{ transition: "transform .15s", transform: collapsed.has(g.id) ? "rotate(-90deg)" : "none" }} />
+                      {g.name}
+                      <span style={{ color: "var(--text-dim)", fontWeight: 400, fontSize: 12 }}>
+                        {g.units.length} local(aux)
+                        {ledgerYear === new Date().getFullYear() && ` · ${g.units.filter((u) => payments?.[`${u.id}|${thisPeriod}`]?.paid).length}/${g.units.length} payés ce mois`}
+                      </span>
+                    </button>
                   </td>
                 </tr>
-                {g.units.map((u) => (
+                {!collapsed.has(g.id) && g.units.map((u) => (
                 <tr key={u.id}>
-                  <td style={styles.ledgerRowLabel}>
+                  <td style={{ ...styles.ledgerRowLabel, paddingLeft: 38 }}>
+                    <span aria-hidden="true" style={{ position: "absolute", left: 22, top: 0, bottom: 0, width: 1, background: "var(--border-strong)" }} />
                     <div style={styles.ledgerTenant}>{u.tenant}</div>
-                    <div style={styles.ledgerUnit}>{u.propertyName} · {u.name}</div>
+                    <div style={styles.ledgerUnit}>{u.name}</div>
                   </td>
                   {MOIS.map((_, mi) => {
                     const period = periodKey(ledgerYear, mi);
