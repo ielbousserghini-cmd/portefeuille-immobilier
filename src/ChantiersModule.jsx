@@ -827,7 +827,7 @@ function DocumentsTab({ chantierId, lots, currentUser, canWrite, flashError }) {
           </select>
           <label style={{ ...styles.secondaryBtn, cursor: uploading ? "default" : "pointer" }}>
             <Upload size={14} /> {uploading ? "Envoi..." : "Ajouter une photo / un document"}
-            <input type="file" accept=".jpg,.jpeg,.png,.heic,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" onChange={handleFile} style={{ display: "none" }} disabled={uploading} />
+            <input type="file" accept=".jpg,.jpeg,.png,.heic,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" onChange={handleFile} style={{ display: "none" }} disabled={uploading} />
           </label>
         </div>
       )}

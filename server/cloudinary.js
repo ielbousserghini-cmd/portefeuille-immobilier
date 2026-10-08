@@ -21,7 +21,7 @@ const RESOURCE_TYPES = ["image", "raw", "video"];
 // Extensions acceptées à l'envoi. Les photos sont envoyées comme « image »
 // (miniatures possibles) ; tout le reste comme « raw », extension comprise
 // dans l'identifiant (sinon Cloudinary perd l'extension des fichiers raw).
-const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "heic", "webp"];
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "heic", "webp", "gif"];
 const RAW_EXTENSIONS = ["pdf", "doc", "docx", "xls", "xlsx", "csv", "txt", "zip"];
 const ALLOWED_EXTENSIONS = [...IMAGE_EXTENSIONS, ...RAW_EXTENSIONS];
 
