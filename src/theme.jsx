@@ -166,6 +166,8 @@ a { color: var(--accent); }
 .spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: pf-spin .7s linear infinite; display: inline-block; flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; color: var(--accent); }
 @media (max-width: 760px) {
   .app-shell { flex-direction: column !important; min-height: auto !important; }
   .sidebar-nav { position: sticky !important; top: 0; z-index: 30; width: 100% !important; height: auto !important; flex-direction: row !important; align-items: center !important;

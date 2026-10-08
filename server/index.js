@@ -2,7 +2,8 @@ require("dotenv").config();
 const path = require("path");
 const express = require("express");
 const cookieParser = require("cookie-parser");
-const { migrate, seedAdmin } = require("./db");
+const { pool, migrate, seedAdmin } = require("./db");
+const { checkAndSendAlerts } = require("./alerts");
 
 const authRoutes = require("./routes/auth");
 const portfolioRoutes = require("./routes/portfolio");
@@ -12,6 +13,8 @@ const avancementRoutes = require("./routes/avancement");
 const budgetRoutes = require("./routes/budget");
 const planningRoutes = require("./routes/planning");
 const documentsRoutes = require("./routes/documents");
+const aiImportRoutes = require("./routes/ai-import");
+const alertsRoutes = require("./routes/alerts");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +27,11 @@ app.use(cookieParser());
 app.use("/api", authRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/users", usersRoutes);
+// Les routes /api/ai et /api/alerts sont montées avant les routeurs Chantiers
+// montés sur "/api" : ceux-ci filtrent toute requête /api/* qui leur parvient
+// (accès Chantiers requis) et masqueraient sinon les routes déclarées après.
+app.use("/api/ai", aiImportRoutes);
+app.use("/api", alertsRoutes);
 app.use("/api/chantiers", chantiersRoutes);
 app.use("/api", avancementRoutes);
 app.use("/api", budgetRoutes);
@@ -45,12 +53,22 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Erreur interne du serveur." });
 });
 
+// Vérification périodique des alertes bail/révision (voir server/alerts.js).
+// Render (plan gratuit) met le service en veille après 15 min d'inactivité :
+// cette boucle ne tourne donc que pendant que le service est éveillé, en plus
+// de la vérification déclenchée à chaque chargement du Tableau de bord par
+// un admin (route /api/alerts/check-now). Ce n'est pas un vrai cron fiable à
+// heure fixe, mais ça couvre l'usage normal (l'app est régulièrement visitée).
+const ALERTS_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
+
 async function start() {
   await migrate();
   await seedAdmin();
   app.listen(PORT, () => {
     console.log(`Serveur démarré sur le port ${PORT}`);
   });
+  setTimeout(() => checkAndSendAlerts(pool), 10000);
+  setInterval(() => checkAndSendAlerts(pool), ALERTS_INTERVAL_MS);
 }
 
 start().catch((err) => {

@@ -178,6 +178,22 @@ async function migrate() {
       UNIQUE(user_id, module)
     );
   `);
+
+  // --- Alertes bail / révision de loyer (module Loyers) ---
+  // Mémorise quelles alertes ont déjà été envoyées par email, pour ne pas
+  // renvoyer le même email à chaque vérification périodique. unit_key =
+  // "<propertyId>:<unitId>" (identifiants internes au JSON du portefeuille,
+  // pas de clé étrangère SQL possible ici).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS alert_log (
+      id SERIAL PRIMARY KEY,
+      unit_key TEXT NOT NULL,
+      alert_type TEXT NOT NULL CHECK (alert_type IN ('lease_end', 'revision')),
+      dedupe_key TEXT NOT NULL,
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE(unit_key, alert_type, dedupe_key)
+    );
+  `);
 }
 
 async function seedAdmin() {

@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { Building2, Store, Landmark, Plus, X, Pencil, Trash2, ChevronDown, ChevronRight, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Circle, MapPin, Download, Upload, CalendarClock, DoorOpen, FileText, Printer, Copy, Receipt, Mail, MessageCircle, Percent, Search, CheckCheck, Undo2, ChevronLeft } from "lucide-react";
+import { useState, useEffect, useMemo, Fragment } from "react";
+import { Building2, Store, Landmark, Plus, X, Pencil, Trash2, ChevronDown, ChevronRight, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Circle, MapPin, Download, Upload, CalendarClock, DoorOpen, FileText, Printer, Copy, Receipt, Mail, MessageCircle, Percent, Search, CheckCheck, Undo2, ChevronLeft, Sparkles, Loader2 } from "lucide-react";
 import { api } from "./api";
 import { fontImport, styles, IconBtn } from "./theme.jsx";
 
@@ -63,6 +63,12 @@ export default function LoyersModule({ currentUser }) {
   const [modal, setModal] = useState(null); // {type:'property'|'unit', data, propertyId}
   const [ledgerYear, setLedgerYear] = useState(new Date().getFullYear());
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  function showNotice(msg) {
+    setNotice(msg);
+    setTimeout(() => setNotice(null), 5000);
+  }
 
   useEffect(() => {
     (async () => {
@@ -91,6 +97,12 @@ export default function LoyersModule({ currentUser }) {
       }
       setLoaded(true);
     })();
+    // Déclenche une vérification des alertes bail/révision à l'ouverture
+    // (en plus de la vérification périodique côté serveur) : utile car
+    // Render (plan gratuit) met le service en veille, donc chaque visite
+    // admin est une occasion de rattraper les alertes en retard. Silencieux
+    // en cas d'échec — ce n'est qu'un coup de pouce, pas une action requise.
+    if (isAdmin) api.checkAlertsNow().catch(() => {});
   }, []);
 
   async function persist(nextProps, nextPay, nextExp, { replacePayments = false } = {}) {
@@ -153,6 +165,7 @@ export default function LoyersModule({ currentUser }) {
   function openEditUnit(propertyId, u) { setModal({ type: "unit", propertyId, data: { ...u } }); }
   function openAddBulk(propertyId) { setModal({ type: "bulk", propertyId, data: { unitType: "magasin", prefix: "", start: 1, end: 3, rent: "" } }); }
   function openAddExpense(propertyId) { setModal({ type: "expense", propertyId, data: { label: "", amount: "", date: new Date().toISOString().slice(0, 10) } }); }
+  function openAiExcelImport(targetId) { setModal({ type: "ai-excel", targetId: typeof targetId === "string" ? targetId : null }); }
 
   function saveProperty(data) {
     const next = [...properties];
@@ -160,7 +173,12 @@ export default function LoyersModule({ currentUser }) {
       const i = next.findIndex((p) => p.id === data.id);
       next[i] = { ...next[i], ...data };
     } else {
-      next.push({ id: uid(), name: data.name, type: data.type, address: data.address, city: data.city || "", estimatedValue: data.estimatedValue || "", titleDeed: data.titleDeed || "", valeurLocative: data.valeurLocative || "", units: [] });
+      // On garde tous les champs du formulaire (financement, meublé…), et les
+      // locaux éventuellement préparés par l'import IA du formulaire.
+      const { importedUnits, ...fields } = data;
+      const units = importedUnits?.length ? mergeImportedUnits([], importedUnits).units : [];
+      next.push({ ...fields, id: uid(), name: data.name.trim(), city: data.city || "", address: data.address || "", units });
+      if (units.length) showNotice(`${data.name.trim()} créé avec ${units.length} local(aux).`);
     }
     persist(next, payments);
     setModal(null);
@@ -206,6 +224,48 @@ export default function LoyersModule({ currentUser }) {
     const next = properties.map((p) => p.id === propertyId ? { ...p, units: [...(p.units || []), ...newUnits] } : p);
     persist(next, payments);
     setModal(null);
+  }
+
+  // Confirmation de l'import assisté par IA (voir AiExcelImportModal).
+  // `targetPropertyId` vaut soit l'id d'un bien existant, soit "__new__" pour
+  // en créer un nouveau décrit par `newProperty`. Dans un bien existant, un
+  // local qui porte déjà le même nom est mis à jour au lieu d'être dupliqué :
+  // on peut donc réimporter un état locatif à jour sans créer de doublons.
+  function importAiUnits(targetPropertyId, newProperty, rows) {
+    let next;
+    let msg;
+    if (targetPropertyId === "__new__") {
+      const { units } = mergeImportedUnits([], rows);
+      const name = (newProperty?.name || "Nouveau bien").trim();
+      next = [
+        ...properties,
+        {
+          id: uid(),
+          name,
+          type: newProperty?.type || "immeuble",
+          address: newProperty?.address || "",
+          city: newProperty?.city || "",
+          titleDeed: newProperty?.titleDeed || "",
+          estimatedValue: "",
+          units,
+        },
+      ];
+      msg = `${name} créé avec ${units.length} local(aux).`;
+    } else {
+      let added = 0, updated = 0, name = "";
+      next = properties.map((p) => {
+        if (p.id !== targetPropertyId) return p;
+        const merged = mergeImportedUnits(p.units || [], rows);
+        added = merged.added;
+        updated = merged.updated;
+        name = p.name;
+        return { ...p, units: merged.units };
+      });
+      msg = `${name} : ${added} local(aux) ajouté(s), ${updated} mis à jour.`;
+    }
+    persist(next, payments);
+    setModal(null);
+    showNotice(msg);
   }
 
   function deleteUnit(propertyId, unitId) {
@@ -347,8 +407,9 @@ export default function LoyersModule({ currentUser }) {
   return (
     <>
       <style>{fontImport}</style>
-      <LoyersNav tab={tab} setTab={setTab} isAdmin={isAdmin} onExport={exportBackup} onImport={importBackup} />
+      <LoyersNav tab={tab} setTab={setTab} isAdmin={isAdmin} onExport={exportBackup} onImport={importBackup} onAiImport={openAiExcelImport} />
       {error && <div role="alert" style={styles.errorBanner}><AlertTriangle size={16} strokeWidth={2} color="var(--bad)" style={{ flexShrink: 0 }} />{error}</div>}
+      {notice && !error && <div role="status" style={{ ...styles.errorBanner, borderLeft: "3px solid var(--good)" }}><CheckCircle2 size={16} strokeWidth={2} color="var(--good)" style={{ flexShrink: 0 }} />{notice}</div>}
       {tab === "encaisser" && (
         <Encaisser
           allUnits={allUnits}
@@ -400,7 +461,8 @@ export default function LoyersModule({ currentUser }) {
       {modal && modal.type === "letter" && <LetterModal data={modal.data} onClose={() => setModal(null)} />}
       {modal && modal.type === "revision" && <RevisionModal data={modal.data} onClose={() => setModal(null)} onConfirm={applyRentRevision} />}
       {modal && modal.type === "turnover" && <TurnoverModal data={modal.data} onClose={() => setModal(null)} onSave={saveTurnover} />}
-      {modal && !["receipt", "letter", "revision", "turnover"].includes(modal.type) && (
+      {modal && modal.type === "ai-excel" && <AiExcelImportModal properties={properties} presetTargetId={modal.targetId} onClose={() => setModal(null)} onConfirm={importAiUnits} />}
+      {modal && !["receipt", "letter", "revision", "turnover", "ai-excel"].includes(modal.type) && (
         <Modal
           modal={modal}
           onClose={() => setModal(null)}
@@ -417,7 +479,7 @@ export default function LoyersModule({ currentUser }) {
 // Sous-navigation interne au module Loyers (remplace l'ancien Sidebar, qui est
 // désormais unifié au niveau d'ExtranetShell). Les onglets et la logique
 // d'export/import restent celles du module Loyers, inchangées.
-function LoyersNav({ tab, setTab, isAdmin, onExport, onImport }) {
+function LoyersNav({ tab, setTab, isAdmin, onExport, onImport, onAiImport }) {
   const items = isAdmin
     ? [
         { id: "dashboard", label: "Tableau de bord", icon: TrendingUp },
@@ -460,6 +522,10 @@ function LoyersNav({ tab, setTab, isAdmin, onExport, onImport }) {
       </div>
       {isAdmin && (
         <div style={{ display: "flex", gap: 8, paddingBottom: 8 }}>
+          <button style={{ ...styles.backupBtn, color: "var(--accent)", borderColor: "var(--accent-dim)" }} onClick={onAiImport} title="Importer un Excel, un PDF, un Word ou une photo : l'IA crée les locaux automatiquement">
+            <Sparkles size={15} strokeWidth={1.75} />
+            <span>Importer un fichier (IA)</span>
+          </button>
           <button style={styles.backupBtn} onClick={onExport} title="Télécharger une sauvegarde de toutes tes données">
             <Download size={15} strokeWidth={1.75} />
             <span>Exporter</span>
@@ -802,7 +868,7 @@ function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddP
         <div style={styles.emptyState}>
           <Building2 size={28} strokeWidth={1.5} color="var(--text-dim)" />
           <div style={styles.emptyStateTitle}>Aucun bien enregistré</div>
-          <div style={styles.emptyStateSub}>Créez un immeuble, un magasin ou un mall. Vous ajouterez ensuite ses locaux un par un, à l'intérieur.</div>
+          <div style={styles.emptyStateSub}>Créez un immeuble, un magasin ou un mall. Dans le formulaire, vous pouvez déposer votre état locatif (Excel, PDF, photo) : l'IA remplit le bien et crée ses locaux.</div>
         </div>
       ) : (
         <>
@@ -1142,6 +1208,9 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
             <button style={styles.secondaryBtn} onClick={() => openAddBulk(property.id)}>
               <Plus size={14} /> Ajouter en série
             </button>
+            <button style={{ ...styles.secondaryBtn, color: "var(--accent)" }} onClick={() => setModal({ type: "ai-excel", targetId: property.id })} title="Excel, PDF, Word ou photo : l'IA ajoute ou met à jour les locaux de ce bien">
+              <Sparkles size={14} /> Importer un fichier (IA)
+            </button>
             <button style={styles.primaryBtn} onClick={() => openAddUnit(property.id)}>
               <Plus size={16} strokeWidth={2} /> Ajouter un local
             </button>
@@ -1160,7 +1229,12 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
         <div style={styles.emptyState}>
           <Store size={28} strokeWidth={1.5} color="var(--text-dim)" />
           <div style={styles.emptyStateTitle}>Aucun local dans {property.name}</div>
-          <div style={styles.emptyStateSub}>Ajoutez ici chaque magasin, appartement ou lot de cet immeuble, un par un — précisez le type à chaque ajout.</div>
+          <div style={styles.emptyStateSub}>Ajoutez chaque magasin, appartement ou lot un par un, ou importez directement votre état locatif (Excel, PDF, photo) : l'IA crée tous les locaux d'un coup.</div>
+          {isAdmin && (
+            <button style={{ ...styles.primaryBtn, marginTop: 10 }} onClick={() => setModal({ type: "ai-excel", targetId: property.id })}>
+              <Sparkles size={15} /> Importer un fichier (IA)
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
@@ -1294,8 +1368,26 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
   );
 }
 
+const ledgerGroupStyle = { padding: "9px 16px", fontSize: 12.5, fontWeight: 600, color: "var(--accent)", background: "var(--surface-2)", borderBottom: "1px solid var(--border)", textAlign: "left" };
+
 function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, canTogglePayment }) {
   const occupied = allUnits.filter((u) => u.tenant && u.tenant.trim());
+  // Regroupe les locaux par immeuble, dans l'ordre des biens, pour afficher
+  // un petit intitulé avant les locaux de chaque immeuble.
+  const groups = useMemo(() => {
+    const list = [];
+    const byId = new Map();
+    occupied.forEach((u) => {
+      let g = byId.get(u.propertyId);
+      if (!g) {
+        g = { id: u.propertyId, name: u.propertyName || "Sans nom", units: [] };
+        byId.set(u.propertyId, g);
+        list.push(g);
+      }
+      g.units.push(u);
+    });
+    return list;
+  }, [occupied]);
   return (
     <div className="page" style={styles.page}>
       <header className="page-header-row" style={styles.pageHeaderRow}>
@@ -1326,7 +1418,16 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
               </tr>
             </thead>
             <tbody>
-              {occupied.map((u) => (
+              {groups.map((g) => (
+                <Fragment key={g.id}>
+                <tr>
+                  <td colSpan={MOIS.length + 1} style={ledgerGroupStyle}>
+                    <span style={{ position: "sticky", left: 16 }}>
+                      {g.name} <span style={{ color: "var(--text-dim)", fontWeight: 500 }}>· {g.units.length} local(aux)</span>
+                    </span>
+                  </td>
+                </tr>
+                {g.units.map((u) => (
                 <tr key={u.id}>
                   <td style={styles.ledgerRowLabel}>
                     <div style={styles.ledgerTenant}>{u.tenant}</div>
@@ -1353,6 +1454,8 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
                     );
                   })}
                 </tr>
+                ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -1736,9 +1839,308 @@ function Fiscalite({ properties, expenses }) {
   );
 }
 
+// Import Excel assisté par IA : l'admin choisit un fichier (n'importe quelle
+// mise en page), le serveur demande à l'IA de mapper chaque ligne vers le
+// format locaux/locataires/loyers de l'app, puis l'admin relit/édite
+// l'aperçu avant de confirmer — rien n'est écrit en base avant ce clic.
+// ---------------------------------------------------------------------------
+// Import assisté par IA : composants partagés
+// ---------------------------------------------------------------------------
+
+const AI_ACCEPT_ALL = ".xlsx,.xls,.xlsm,.ods,.csv,.pdf,.docx,.txt,.jpg,.jpeg,.png,.webp";
+const AI_ACCEPT_CONTRACT = ".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp";
+
+const aiStyles = {
+  drop: { display: "flex", alignItems: "center", gap: 14, padding: "18px 18px", borderRadius: 12, border: "1.5px dashed var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-body)", textAlign: "left", width: "100%" },
+  dropOver: { borderColor: "var(--accent)", background: "var(--accent-soft)" },
+  dropIcon: { width: 40, height: 40, borderRadius: 10, background: "var(--accent-soft)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  dropTitle: { fontSize: 14, fontWeight: 600 },
+  dropHint: { fontSize: 12.5, color: "var(--text-dim)", marginTop: 3, lineHeight: 1.5 },
+  note: { fontSize: 12.5, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", lineHeight: 1.5 },
+  badgeNew: { fontSize: 11, fontWeight: 600, color: "var(--good)", background: "var(--good-soft)", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap" },
+  badgeUpd: { fontSize: 11, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap" },
+  rowNote: { fontSize: 11.5, color: "var(--bad-text, var(--bad))", marginTop: 4, lineHeight: 1.4 },
+};
+
+function nameKey(name) {
+  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// Fusionne des locaux proposés par l'IA dans une liste existante : un local
+// de même nom est mis à jour (seulement avec les champs renseignés), les
+// autres sont ajoutés. Renvoie la nouvelle liste et les compteurs.
+function mergeImportedUnits(existingUnits, rows) {
+  const result = existingUnits.map((u) => ({ ...u }));
+  const index = new Map();
+  result.forEach((u, i) => { const k = nameKey(u.name); if (k && !index.has(k)) index.set(k, i); });
+  let added = 0, updated = 0;
+  for (const r of rows) {
+    const clean = {
+      name: String(r.name || "").trim(),
+      unitType: UNIT_TYPES[r.unitType] ? r.unitType : "autre",
+      tenant: r.tenant || "",
+      tenantEmail: r.tenantEmail || "",
+      tenantPhone: r.tenantPhone || "",
+      rent: Number(r.rent) || 0,
+      leaseStart: r.leaseStart || "",
+      leaseEnd: r.leaseEnd || "",
+      lastRevisionDate: r.lastRevisionDate || "",
+    };
+    const k = nameKey(clean.name);
+    if (k && index.has(k)) {
+      const i = index.get(k);
+      const patch = {};
+      for (const [field, v] of Object.entries(clean)) {
+        if (field === "unitType" && v === "autre") continue;
+        if (v !== "" && v !== 0 && v != null) patch[field] = v;
+      }
+      result[i] = { ...result[i], ...patch };
+      updated++;
+    } else {
+      result.push({ id: uid(), ...clean });
+      if (k) index.set(k, result.length - 1);
+      added++;
+    }
+  }
+  return { units: result, added, updated };
+}
+
+// Zone de dépôt : glisser-déposer un fichier, ou cliquer pour le choisir.
+function AiDropZone({ busy, onFile, title, hint, accept = AI_ACCEPT_ALL }) {
+  const [over, setOver] = useState(false);
+  function take(fileList) {
+    const f = fileList && fileList[0];
+    if (f && !busy) onFile(f);
+  }
+  return (
+    <label
+      style={{ ...aiStyles.drop, ...(over ? aiStyles.dropOver : {}), cursor: busy ? "default" : "pointer" }}
+      onDragOver={(e) => { e.preventDefault(); if (!busy) setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); take(e.dataTransfer.files); }}
+    >
+      <div style={aiStyles.dropIcon}>{busy ? <Loader2 size={19} className="spin" /> : <Sparkles size={19} strokeWidth={1.75} />}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={aiStyles.dropTitle}>{busy ? "Analyse en cours…" : title}</div>
+        <div style={aiStyles.dropHint}>{busy ? "L'IA lit le fichier. Compte jusqu'à une minute pour un grand tableau." : hint}</div>
+      </div>
+      <input
+        type="file"
+        accept={accept}
+        disabled={busy}
+        onChange={(e) => { const files = e.target.files; take(files); e.target.value = ""; }}
+        style={{ display: "none" }}
+      />
+    </label>
+  );
+}
+
+// Aperçu modifiable des locaux trouvés par l'IA, avant enregistrement.
+function AiUnitsPreview({ rows, setRows, existingUnits }) {
+  const existing = useMemo(() => new Set((existingUnits || []).map((u) => nameKey(u.name))), [existingUnits]);
+  function updateRow(i, field, val) {
+    setRows(rows.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)));
+  }
+  function removeRow(i) {
+    setRows(rows.filter((_, idx) => idx !== i));
+  }
+  const updates = rows.filter((r) => existing.has(nameKey(r.name))).length;
+  return (
+    <>
+      <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginTop: 10, maxHeight: 420, overflowY: "auto" }}>
+        <table style={{ ...styles.table, marginTop: 0, minWidth: 1000 }}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Local</th>
+              <th style={styles.th}>Type</th>
+              <th style={styles.th}>Locataire</th>
+              <th style={styles.th}>Loyer (DH)</th>
+              <th style={styles.th}>Début bail</th>
+              <th style={styles.th}>Fin bail</th>
+              <th style={styles.th}></th>
+              <th style={styles.th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td style={styles.td}>
+                  <input style={{ ...styles.input, minWidth: 120 }} value={r.name} onChange={(e) => updateRow(i, "name", e.target.value)} aria-label="Nom du local" />
+                  {r.note && <div style={aiStyles.rowNote}>{r.note}</div>}
+                </td>
+                <td style={styles.td}>
+                  <select style={{ ...styles.input, minWidth: 130 }} value={r.unitType || "autre"} onChange={(e) => updateRow(i, "unitType", e.target.value)} aria-label="Type de local">
+                    {Object.entries(UNIT_TYPES).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                  </select>
+                </td>
+                <td style={styles.td}><input style={{ ...styles.input, minWidth: 140 }} value={r.tenant || ""} onChange={(e) => updateRow(i, "tenant", e.target.value)} placeholder="Vacant" aria-label="Locataire" /></td>
+                <td style={styles.td}><input style={{ ...styles.input, width: 96 }} type="number" value={r.rent} onChange={(e) => updateRow(i, "rent", e.target.value)} aria-label="Loyer mensuel" /></td>
+                <td style={styles.td}><input style={{ ...styles.input, width: 140 }} type="date" value={r.leaseStart || ""} onChange={(e) => updateRow(i, "leaseStart", e.target.value)} aria-label="Début du bail" /></td>
+                <td style={styles.td}><input style={{ ...styles.input, width: 140 }} type="date" value={r.leaseEnd || ""} onChange={(e) => updateRow(i, "leaseEnd", e.target.value)} aria-label="Fin du bail" /></td>
+                <td style={styles.td}>{existing.has(nameKey(r.name)) ? <span style={aiStyles.badgeUpd}>Mise à jour</span> : <span style={aiStyles.badgeNew}>Nouveau</span>}</td>
+                <td style={styles.td}><IconBtn danger title="Retirer cette ligne" onClick={() => removeRow(i)}><X size={14} /></IconBtn></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ ...styles.emptyNote, marginTop: 8 }}>
+        {rows.length} local(aux) trouvé(s){updates > 0 ? `, dont ${updates} déjà présent(s) qui seront mis à jour` : ""}. Corrige ce qu'il faut, puis confirme.
+      </div>
+    </>
+  );
+}
+
+function AiExcelImportModal({ properties, presetTargetId, onClose, onConfirm }) {
+  const [phase, setPhase] = useState("pick"); // pick | loading | preview
+  const [error, setError] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [targetId, setTargetId] = useState(presetTargetId || properties[0]?.id || "__new__");
+  const [newProp, setNewProp] = useState({ name: "", type: "immeuble", city: "", address: "", titleDeed: "" });
+  const lockedTarget = Boolean(presetTargetId);
+  const target = properties.find((p) => p.id === targetId);
+
+  async function handleFile(file) {
+    setError(null);
+    setFileName(file.name);
+    setPhase("loading");
+    try {
+      const res = await api.aiFileImport(file, { withProperty: !lockedTarget });
+      const units = res.units || [];
+      if (units.length === 0) throw new Error("L'IA n'a trouvé aucun local dans ce fichier.");
+      setRows(units);
+      setWarnings(res.warnings || []);
+      // Choix automatique du bien : celui imposé, sinon un bien existant du
+      // même nom que celui détecté, sinon un nouveau bien pré-rempli.
+      if (!lockedTarget) {
+        const detected = res.property;
+        const match = detected?.name && properties.find((p) => nameKey(p.name) === nameKey(detected.name));
+        if (match) {
+          setTargetId(match.id);
+        } else if (detected?.name || properties.length === 0) {
+          setTargetId("__new__");
+        }
+        if (detected) {
+          setNewProp((cur) => ({
+            name: detected.name || cur.name,
+            type: detected.type || cur.type,
+            city: detected.city || cur.city,
+            address: detected.address || cur.address,
+            titleDeed: detected.titleDeed || cur.titleDeed,
+          }));
+        }
+      }
+      setPhase("preview");
+    } catch (err) {
+      setError(err.message || "Échec de l'analyse du fichier.");
+      setPhase("pick");
+    }
+  }
+
+  function confirm() {
+    if (targetId === "__new__" && !newProp.name.trim()) {
+      setError("Donne un nom au nouveau bien avant d'importer.");
+      return;
+    }
+    const valid = rows.filter((r) => String(r.name || "").trim());
+    if (valid.length === 0) {
+      setError("Aucun local à importer.");
+      return;
+    }
+    onConfirm(targetId, newProp, valid);
+  }
+
+  const wide = { ...styles.modal, width: 960, maxWidth: "96vw" };
+
+  return (
+    <div style={styles.overlay} onClick={onClose}>
+      <div style={wide} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Importer un fichier avec l'IA">
+        <div style={styles.modalHead}>
+          <div style={styles.modalTitle}>{lockedTarget && target ? `Importer des locaux dans ${target.name}` : "Importer un fichier avec l'IA"}</div>
+          <button type="button" style={styles.iconBtn} onClick={onClose} aria-label="Fermer"><X size={16} /></button>
+        </div>
+
+        <div style={styles.modalBody}>
+          {phase !== "preview" && (
+            <>
+              <AiDropZone
+                busy={phase === "loading"}
+                onFile={handleFile}
+                title="Déposez votre fichier ici, ou cliquez pour le choisir"
+                hint="Excel, CSV, PDF, Word ou photo d'un tableau, quelle que soit la mise en page. L'IA repère les locaux, locataires, loyers et dates de bail. Rien n'est enregistré avant votre confirmation."
+              />
+              {error && <div style={{ ...styles.formError, marginTop: 12 }}>{error}</div>}
+            </>
+          )}
+
+          {phase === "preview" && (
+            <>
+              <div style={{ ...aiStyles.note, marginBottom: 12 }}>
+                <strong style={{ color: "var(--text)" }}>{fileName}</strong> analysé.{" "}
+                {targetId === "__new__" ? "Un nouveau bien va être créé avec ces locaux." : "Les locaux seront ajoutés au bien choisi ; ceux qui existent déjà sont mis à jour."}
+              </div>
+              {!lockedTarget && (
+                <div style={styles.fieldRow}>
+                  <Field label="Importer dans le bien">
+                    <select style={styles.input} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+                      {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      <option value="__new__">+ Nouveau bien</option>
+                    </select>
+                  </Field>
+                  {targetId === "__new__" && (
+                    <Field label="Nom du nouveau bien">
+                      <input style={styles.input} value={newProp.name} onChange={(e) => setNewProp({ ...newProp, name: e.target.value })} placeholder="Ex. Qissariyat Al Baraka" />
+                    </Field>
+                  )}
+                </div>
+              )}
+              {targetId === "__new__" && !lockedTarget && (
+                <div style={styles.fieldRow}>
+                  <Field label="Type">
+                    <select style={styles.input} value={newProp.type} onChange={(e) => setNewProp({ ...newProp, type: e.target.value })}>
+                      {Object.entries(TYPES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Ville">
+                    <input style={styles.input} value={newProp.city} onChange={(e) => setNewProp({ ...newProp, city: e.target.value })} placeholder="Ex. Casablanca" />
+                  </Field>
+                  <Field label="Adresse">
+                    <input style={styles.input} value={newProp.address} onChange={(e) => setNewProp({ ...newProp, address: e.target.value })} placeholder="Ex. Derb Omar" />
+                  </Field>
+                </div>
+              )}
+
+              {warnings.length > 0 && (
+                <div style={{ ...aiStyles.note, marginTop: 10 }}>
+                  {warnings.map((w, i) => <div key={i}>{w}</div>)}
+                </div>
+              )}
+              {error && <div style={{ ...styles.formError, marginTop: 10 }}>{error}</div>}
+
+              <AiUnitsPreview rows={rows} setRows={setRows} existingUnits={targetId === "__new__" ? [] : target?.units} />
+            </>
+          )}
+        </div>
+
+        {phase === "preview" && (
+          <div style={styles.modalActions}>
+            <button type="button" style={styles.secondaryBtn} onClick={() => { setPhase("pick"); setRows([]); setError(null); }}>Choisir un autre fichier</button>
+            <button type="button" style={styles.secondaryBtn} onClick={onClose}>Annuler</button>
+            <button type="button" style={styles.primaryBtn} onClick={confirm}>Importer {rows.length} local(aux)</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveExpense }) {
   const [form, setForm] = useState(modal.data);
   const [formError, setFormError] = useState(null);
+  const [aiContractState, setAiContractState] = useState(null); // null | "loading" | {note}
+  const [aiPropState, setAiPropState] = useState(null); // null | "loading" | {note}
   const isProperty = modal.type === "property";
   const isBulk = modal.type === "bulk";
   const isExpense = modal.type === "expense";
@@ -1746,6 +2148,66 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
   function set(field, val) {
     if (formError) setFormError(null);
     setForm({ ...form, [field]: val });
+  }
+
+  // Analyse IA d'un contrat de bail (PDF/Word) : pré-remplit le formulaire du
+  // local avec ce que l'IA a trouvé, sans jamais enregistrer toute seule —
+  // l'admin reste libre de corriger puis de cliquer "Enregistrer".
+  async function handleContractFile(file) {
+    if (!file) return;
+    setFormError(null);
+    setAiContractState("loading");
+    try {
+      const res = await api.aiContractAnalyze(file);
+      const f = res.fields || {};
+      setForm((cur) => ({
+        ...cur,
+        ...(f.tenant ? { tenant: f.tenant } : {}),
+        ...(f.tenantEmail ? { tenantEmail: f.tenantEmail } : {}),
+        ...(f.tenantPhone ? { tenantPhone: f.tenantPhone } : {}),
+        ...(f.rent !== "" && f.rent !== undefined ? { rent: f.rent } : {}),
+        ...(f.leaseStart ? { leaseStart: f.leaseStart } : {}),
+        ...(f.leaseEnd ? { leaseEnd: f.leaseEnd } : {}),
+        ...(f.lastRevisionDate ? { lastRevisionDate: f.lastRevisionDate } : {}),
+        ...(f.unitType ? { unitType: f.unitType } : {}),
+        ...(f.unitName && !(cur.name || "").trim() ? { name: f.unitName } : {}),
+      }));
+      const noteParts = ["Champs pré-remplis à partir du contrat — vérifie avant d'enregistrer."];
+      if (f.propertyNameHint) noteParts.push(`Bien mentionné dans le contrat : « ${f.propertyNameHint} ».`);
+      if (res.warnings?.length) noteParts.push(...res.warnings);
+      setAiContractState({ note: noteParts.join(" ") });
+    } catch (err) {
+      setAiContractState(null);
+      setFormError(err.message || "Échec de l'analyse du contrat.");
+    }
+  }
+
+  // Nouveau bien : l'IA lit un fichier (état locatif, liste de locaux, PDF,
+  // photo…), remplit la fiche du bien et prépare ses locaux. Tout reste
+  // modifiable, et rien n'est enregistré avant "Enregistrer".
+  async function handlePropertyFile(file) {
+    setFormError(null);
+    setAiPropState("loading");
+    try {
+      const res = await api.aiFileImport(file, { withProperty: true });
+      const p = res.property || {};
+      const units = res.units || [];
+      setForm((cur) => ({
+        ...cur,
+        name: (cur.name || "").trim() ? cur.name : p.name || cur.name,
+        type: p.type || cur.type,
+        city: (cur.city || "").trim() ? cur.city : p.city || cur.city || "",
+        address: (cur.address || "").trim() ? cur.address : p.address || cur.address || "",
+        titleDeed: (cur.titleDeed || "").trim() ? cur.titleDeed : p.titleDeed || cur.titleDeed || "",
+        importedUnits: units,
+      }));
+      const parts = [`${file.name} analysé : ${units.length} local(aux) trouvé(s), créés en même temps que le bien.`];
+      if (res.warnings?.length) parts.push(...res.warnings);
+      setAiPropState({ note: parts.join(" ") });
+    } catch (err) {
+      setAiPropState(null);
+      setFormError(err.message || "Échec de l'analyse du fichier.");
+    }
   }
 
   function submit() {
@@ -1806,7 +2268,7 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
 
   return (
     <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
+      <div style={isProperty && form.importedUnits?.length ? { ...styles.modal, width: 960, maxWidth: "96vw" } : styles.modal} onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
         <div style={styles.modalHead}>
           <div style={styles.modalTitle}>
             {isProperty ? (form.id ? "Modifier le bien" : "Nouveau bien") : isBulk ? "Ajouter plusieurs locaux d'un coup" : isExpense ? "Nouvelle charge" : (form.id ? "Modifier le local" : "Nouveau local")}
@@ -1817,6 +2279,17 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
         <div style={styles.modalBody}>
         {isProperty ? (
           <>
+            {!form.id && (
+              <div style={{ marginBottom: 16 }}>
+                <AiDropZone
+                  busy={aiPropState === "loading"}
+                  onFile={handlePropertyFile}
+                  title="Remplir automatiquement depuis un fichier"
+                  hint="Déposez l'état locatif (Excel, PDF, Word ou photo) : l'IA remplit la fiche du bien et prépare tous ses locaux."
+                />
+                {aiPropState && aiPropState !== "loading" && <div style={{ ...aiStyles.note, marginTop: 10 }}>{aiPropState.note}</div>}
+              </div>
+            )}
             <Field label="Nom du bien">
               <input style={styles.input} value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Ex. Résidence Al Manar" autoFocus />
             </Field>
@@ -1897,6 +2370,13 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
                 <input style={styles.input} type="number" value={form.furnitureValue || ""} onChange={(e) => set("furnitureValue", e.target.value)} placeholder="Ex. 150000" />
               </Field>
             )}
+
+            {!form.id && form.importedUnits?.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <div style={styles.groupHeading}>Locaux trouvés par l'IA <span style={styles.groupCount}>{form.importedUnits.length}</span></div>
+                <AiUnitsPreview rows={form.importedUnits} setRows={(r) => set("importedUnits", r)} existingUnits={[]} />
+              </div>
+            )}
           </>
         ) : isBulk ? (
           <>
@@ -1939,6 +2419,26 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
           </>
         ) : (
           <>
+            {!form.id || !(form.tenant || "").trim() ? (
+              <div style={{ marginBottom: 14 }}>
+                <AiDropZone
+                  busy={aiContractState === "loading"}
+                  onFile={handleContractFile}
+                  accept={AI_ACCEPT_CONTRACT}
+                  title="Remplir depuis le contrat de bail"
+                  hint="PDF, Word ou photo du contrat : l'IA remplit le locataire, le loyer et les dates du bail."
+                />
+              </div>
+            ) : (
+              <label style={{ ...styles.ghostBtn, marginBottom: 14, cursor: aiContractState === "loading" ? "default" : "pointer", opacity: aiContractState === "loading" ? 0.7 : 1 }}>
+                {aiContractState === "loading" ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                <span>{aiContractState === "loading" ? "Analyse du contrat en cours…" : "Mettre à jour depuis un contrat (IA)"}</span>
+                <input type="file" accept={AI_ACCEPT_CONTRACT} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; handleContractFile(f); }} disabled={aiContractState === "loading"} style={{ display: "none" }} />
+              </label>
+            )}
+            {aiContractState && aiContractState !== "loading" && (
+              <div style={{ ...styles.formError, background: "var(--surface-2)", color: "var(--text-dim)", marginBottom: 12 }}>{aiContractState.note}</div>
+            )}
             <Field label="Type de local">
               <select style={styles.input} value={form.unitType || "magasin"} onChange={(e) => set("unitType", e.target.value)}>
                 {Object.entries(UNIT_TYPES).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
