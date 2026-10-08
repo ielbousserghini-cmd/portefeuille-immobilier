@@ -21,6 +21,27 @@ function fmt(n) {
   return new Intl.NumberFormat("fr-MA", { maximumFractionDigits: 0 }).format(n || 0) + " DH";
 }
 function periodKey(y, m) { return `${y}-${String(m + 1).padStart(2, "0")}`; }
+
+// Loyer variable (ex. grande surface) : u.rent est alors le minimum garanti,
+// u.turnoverRate le pourcentage du chiffre d'affaires, et u.turnovers le CA
+// déclaré par mois ({ "2026-10": 1800000 }). Le loyer dû d'un mois est le plus
+// élevé des deux ; tant que le CA du mois n'est pas saisi, c'est le minimum.
+function isVariableRent(u) { return Number(u.turnoverRate) > 0; }
+function rentDue(u, period) {
+  const min = Number(u.rent) || 0;
+  if (!isVariableRent(u)) return min;
+  const ca = Number(u.turnovers?.[period]) || 0;
+  return Math.max(min, Math.round((ca * Number(u.turnoverRate)) / 100));
+}
+// Loyer annuel d'un local : 12 × le loyer fixe, ou pour un loyer variable la
+// somme des loyers dus de l'année (minimum garanti pour les mois sans CA saisi).
+function unitAnnualRent(u, year) {
+  if (!isVariableRent(u)) return (Number(u.rent) || 0) * 12;
+  let total = 0;
+  for (let m = 0; m < 12; m++) total += rentDue(u, periodKey(year, m));
+  return total;
+}
+function fmtRate(r) { return `${String(Number(r)).replace(".", ",")} %`; }
 function guessUnitType(u) {
   if (u.unitType && UNIT_TYPES[u.unitType]) return u.unitType;
   const n = (u.name || "").toLowerCase();
@@ -101,12 +122,14 @@ export default function LoyersModule({ currentUser }) {
 
   const stats = useMemo(() => {
     const occupied = allUnits.filter((u) => u.tenant && u.tenant.trim());
-    const expected = occupied.reduce((s, u) => s + (Number(u.rent) || 0), 0);
+    const expected = occupied.reduce((s, u) => s + rentDue(u, curPeriod), 0);
     const collected = occupied.reduce((s, u) => {
       const p = payments?.[`${u.id}|${curPeriod}`];
-      return s + (p?.paid ? Number(u.rent) || 0 : 0);
+      return s + (p?.paid ? rentDue(u, curPeriod) : 0);
     }, 0);
-    const unpaid = occupied.filter((u) => !payments?.[`${u.id}|${curPeriod}`]?.paid);
+    const unpaid = occupied
+      .filter((u) => !payments?.[`${u.id}|${curPeriod}`]?.paid)
+      .map((u) => ({ ...u, due: rentDue(u, curPeriod) }));
     return {
       totalProps: properties?.length || 0,
       totalUnits: allUnits.length,
@@ -149,9 +172,9 @@ export default function LoyersModule({ currentUser }) {
       const units = [...(p.units || [])];
       if (data.id) {
         const i = units.findIndex((u) => u.id === data.id);
-        units[i] = { ...units[i], ...data, rent: Number(data.rent) || 0 };
+        units[i] = { ...units[i], ...data, rent: Number(data.rent) || 0, turnoverRate: Number(data.turnoverRate) || 0 };
       } else {
-        units.push({ id: uid(), ...data, rent: Number(data.rent) || 0 });
+        units.push({ id: uid(), ...data, rent: Number(data.rent) || 0, turnoverRate: Number(data.turnoverRate) || 0 });
       }
       return { ...p, units };
     });
@@ -192,6 +215,24 @@ export default function LoyersModule({ currentUser }) {
       return {
         ...p,
         units: p.units.map((u) => u.id === unitId ? { ...u, rent: Number(newRent) || u.rent, lastRevisionDate: today } : u),
+      };
+    });
+    persist(next, payments);
+    setModal(null);
+  }
+
+  function saveTurnover(propertyId, unitId, period, amount) {
+    const next = properties.map((p) => {
+      if (p.id !== propertyId) return p;
+      return {
+        ...p,
+        units: p.units.map((u) => {
+          if (u.id !== unitId) return u;
+          const turnovers = { ...(u.turnovers || {}) };
+          if (Number(amount) > 0) turnovers[period] = Number(amount);
+          else delete turnovers[period];
+          return { ...u, turnovers };
+        }),
       };
     });
     persist(next, payments);
@@ -313,7 +354,8 @@ export default function LoyersModule({ currentUser }) {
       {modal && modal.type === "receipt" && <ReceiptModal data={modal.data} onClose={() => setModal(null)} />}
       {modal && modal.type === "letter" && <LetterModal data={modal.data} onClose={() => setModal(null)} />}
       {modal && modal.type === "revision" && <RevisionModal data={modal.data} onClose={() => setModal(null)} onConfirm={applyRentRevision} />}
-      {modal && modal.type !== "receipt" && modal.type !== "letter" && modal.type !== "revision" && (
+      {modal && modal.type === "turnover" && <TurnoverModal data={modal.data} onClose={() => setModal(null)} onSave={saveTurnover} />}
+      {modal && !["receipt", "letter", "revision", "turnover"].includes(modal.type) && (
         <Modal
           modal={modal}
           onClose={() => setModal(null)}
@@ -501,7 +543,7 @@ function Dashboard({ stats, properties, allUnits, expenses, setModal }) {
                   <ListIcon icon={AlertTriangle} tone="bad" />
                   <div>
                     <div style={styles.unpaidName}>{u.tenant} — {u.name}</div>
-                    <div style={styles.unpaidMeta}>{u.propertyName} · {fmt(u.rent)}</div>
+                    <div style={styles.unpaidMeta}>{u.propertyName} · {fmt(u.due)}</div>
                   </div>
                 </li>
               ))}
@@ -639,7 +681,8 @@ function ListIcon({ icon: Icon, tone }) {
 }
 
 function annualRent(property) {
-  return (property.units || []).filter((u) => u.tenant && u.tenant.trim()).reduce((s, u) => s + (Number(u.rent) || 0) * 12, 0);
+  const year = new Date().getFullYear();
+  return (property.units || []).filter((u) => u.tenant && u.tenant.trim()).reduce((s, u) => s + unitAnnualRent(u, year), 0);
 }
 function calcYield(property) {
   const val = Number(property.estimatedValue) || 0;
@@ -850,7 +893,16 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
                       <tr key={u.id} style={isDup ? styles.dupRow : undefined}>
                         <td style={styles.td}>{u.name}{isDup && <span title="Nom en double" style={styles.dupMarker}> ⚠</span>}</td>
                         <td style={styles.td}>{vacant ? <span style={{ color: "var(--text-dim)" }}>Vacant</span> : u.tenant}</td>
-                        <td style={{ ...styles.td, fontFamily: "var(--font-mono)" }}>{fmt(u.rent)}</td>
+                        <td style={{ ...styles.td, fontFamily: "var(--font-mono)" }}>
+                          {isVariableRent(u) ? (
+                            <>
+                              <div>{fmt(rentDue(u, curPeriod))}</div>
+                              <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2 }}>
+                                {fmtRate(u.turnoverRate)} du CA · min. {fmt(u.rent)}
+                              </div>
+                            </>
+                          ) : fmt(u.rent)}
+                        </td>
                         <td style={{ ...styles.td, fontFamily: "var(--font-mono)", fontSize: 12 }}>
                           {u.leaseStart || "—"} → {u.leaseEnd || "—"}
                         </td>
@@ -858,7 +910,7 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
                           {vacant ? "—" : isAdmin ? (
                             <button
                               type="button"
-                              onClick={() => togglePayment(u.id, curPeriod, u.rent)}
+                              onClick={() => togglePayment(u.id, curPeriod, rentDue(u, curPeriod))}
                               style={{ ...styles.statusBtn, ...(paid ? styles.statusBtnGood : styles.statusBtnBad) }}
                               title="Cliquer pour changer le statut de ce mois"
                             >
@@ -888,8 +940,13 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
                                 <FileText size={13} />
                               </IconBtn>
                             )}
-                            {isAdmin && <IconBtn onClick={() => openEditUnit(property.id, u)}><Pencil size={13} /></IconBtn>}
-                            {isAdmin && <IconBtn onClick={() => deleteUnit(property.id, u.id)} danger><Trash2 size={13} /></IconBtn>}
+                            {isAdmin && !vacant && isVariableRent(u) && (
+                              <IconBtn onClick={() => setModal({ type: "turnover", data: { unit: u, propertyId: property.id, period: curPeriod } })} title="Saisir le chiffre d'affaires du mois">
+                                <TrendingUp size={13} />
+                              </IconBtn>
+                            )}
+                            {isAdmin && <IconBtn onClick={() => openEditUnit(property.id, u)} title="Modifier"><Pencil size={13} /></IconBtn>}
+                            {isAdmin && <IconBtn onClick={() => deleteUnit(property.id, u.id)} danger title="Supprimer"><Trash2 size={13} /></IconBtn>}
                           </div>
                         </td>
                       </tr>
@@ -988,9 +1045,9 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
                     return (
                       <td key={mi} style={styles.ledgerCell}>
                         <button
-                          onClick={() => isAdmin && !isFuture && togglePayment(u.id, period, u.rent)}
+                          onClick={() => isAdmin && !isFuture && togglePayment(u.id, period, rentDue(u, period))}
                           disabled={isFuture || !isAdmin}
-                          title={isFuture ? "Mois à venir" : !isAdmin ? (paid ? "Payé" : "Impayé") : paid ? "Marquer impayé" : "Marquer payé"}
+                          title={`${isFuture ? "Mois à venir" : !isAdmin ? (paid ? "Payé" : "Impayé") : paid ? "Marquer impayé" : "Marquer payé"} · ${fmt(rentDue(u, period))}`}
                           style={{
                             ...styles.ledgerDot,
                             background: isFuture ? "transparent" : paid ? "var(--good)" : "var(--bad-dim)",
@@ -1089,7 +1146,7 @@ function tvaBreakdown(property, expensesForProperty) {
   const units = property.units || [];
   const baseLoyers = units
     .filter((u) => { const t = guessUnitType(u); return (t === "magasin" || t === "bureau") && u.tenant && u.tenant.trim(); })
-    .reduce((s, u) => s + (Number(u.rent) || 0) * 12, 0);
+    .reduce((s, u) => s + unitAnnualRent(u, new Date().getFullYear()), 0);
   const tvaCollectee = assujetti ? baseLoyers * 0.20 : 0;
   const totalCharges = (expensesForProperty || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const tvaRecuperable = assujetti ? totalCharges * (0.20 / 1.20) : 0;
@@ -1607,9 +1664,19 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
                 <input style={styles.input} value={form.tenantPhone || ""} onChange={(e) => set("tenantPhone", e.target.value)} placeholder="Ex. 0661234567" />
               </Field>
             </div>
-            <Field label="Loyer mensuel (DH)">
-              <input style={styles.input} type="number" value={form.rent} onChange={(e) => set("rent", e.target.value)} placeholder="0" />
-            </Field>
+            <div style={styles.fieldRow}>
+              <Field label={Number(form.turnoverRate) > 0 ? "Loyer minimum (DH / mois)" : "Loyer mensuel (DH)"}>
+                <input style={styles.input} type="number" value={form.rent} onChange={(e) => set("rent", e.target.value)} placeholder="0" />
+              </Field>
+              <Field label="% du chiffre d'affaires (optionnel)">
+                <input style={styles.input} type="number" step="0.1" min="0" value={form.turnoverRate || ""} onChange={(e) => set("turnoverRate", e.target.value)} placeholder="Loyer fixe" />
+              </Field>
+            </div>
+            {Number(form.turnoverRate) > 0 && (
+              <div style={{ ...styles.bulkPreview, fontFamily: "var(--font-body)" }}>
+                Loyer du mois = le plus élevé entre {fmt(form.rent)} et {fmtRate(form.turnoverRate)} du CA du mois.
+              </div>
+            )}
             <div style={styles.fieldRow}>
               <Field label="Début du bail">
                 <input style={styles.input} type="date" value={form.leaseStart || ""} onChange={(e) => set("leaseStart", e.target.value)} />
@@ -1723,6 +1790,7 @@ function downloadHtml(filename, title, bodyHtml) {
 function ReceiptModal({ data, onClose }) {
   const { unit, property, period, datePaid } = data;
   const label = periodLabelFr(period);
+  const amount = rentDue(unit, period);
   const [downloaded, setDownloaded] = useState(false);
 
   const plainText = `Quittance de loyer
@@ -1732,9 +1800,9 @@ Local : ${unit.name}
 Locataire : ${unit.tenant}
 Période : ${label}
 Date de paiement : ${datePaid || "—"}
-Montant reçu : ${fmt(unit.rent)}
+Montant reçu : ${fmt(amount)}
 
-Je soussigné(e), bailleur du local désigné ci-dessus, atteste avoir reçu de ${unit.tenant} la somme de ${fmt(unit.rent)} au titre du loyer de ${label}, et lui en donne quittance.
+Je soussigné(e), bailleur du local désigné ci-dessus, atteste avoir reçu de ${unit.tenant} la somme de ${fmt(amount)} au titre du loyer de ${label}, et lui en donne quittance.
 
 Le bailleur`;
 
@@ -1747,8 +1815,8 @@ Le bailleur`;
       <div class="row"><span>Locataire</span><strong>${unit.tenant}</strong></div>
       <div class="row"><span>Période</span><strong>${label}</strong></div>
       <div class="row"><span>Date de paiement</span><strong>${datePaid || "—"}</strong></div>
-      <div class="amount">Montant reçu : ${fmt(unit.rent)}</div>
-      <p>Je soussigné(e), bailleur du local désigné ci-dessus, atteste avoir reçu de ${unit.tenant} la somme de ${fmt(unit.rent)} au titre du loyer de ${label}, et lui en donne quittance.</p>
+      <div class="amount">Montant reçu : ${fmt(amount)}</div>
+      <p>Je soussigné(e), bailleur du local désigné ci-dessus, atteste avoir reçu de ${unit.tenant} la somme de ${fmt(amount)} au titre du loyer de ${label}, et lui en donne quittance.</p>
       <div class="sign"><div>Le bailleur</div><div>Signature</div></div>
     `;
     const ok = downloadHtml(`quittance-${unit.name}-${period}.html`, `Quittance ${unit.name} ${label}`, html);
@@ -1768,7 +1836,7 @@ Le bailleur`;
           <div style={styles.receiptRow}><span>Local</span><strong>{unit.name}</strong></div>
           <div style={styles.receiptRow}><span>Locataire</span><strong>{unit.tenant}</strong></div>
           <div style={styles.receiptRow}><span>Période</span><strong>{label}</strong></div>
-          <div style={styles.receiptRow}><span>Montant</span><strong>{fmt(unit.rent)}</strong></div>
+          <div style={styles.receiptRow}><span>Montant</span><strong>{fmt(amount)}</strong></div>
         </div>
         <SendLinks email={unit.tenantEmail} phone={unit.tenantPhone} subject={`Quittance de loyer — ${unit.name} — ${label}`} text={plainText} />
         <div style={styles.emptyNote}>Le fichier téléchargé (avec mise en page) peut être joint manuellement à l'email si besoin.</div>
@@ -1783,6 +1851,47 @@ Le bailleur`;
           <button type="button" style={styles.primaryBtn} onClick={handleDownload}>
             <Download size={14} /> Télécharger la quittance
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TurnoverModal({ data, onClose, onSave }) {
+  const { unit, propertyId } = data;
+  const [period, setPeriod] = useState(data.period);
+  const [amount, setAmount] = useState(String(unit.turnovers?.[data.period] || ""));
+  const preview = rentDue({ ...unit, turnovers: { [period]: Number(amount) || 0 } }, period);
+
+  function changePeriod(p) {
+    setPeriod(p);
+    setAmount(String(unit.turnovers?.[p] || ""));
+  }
+
+  return (
+    <div style={styles.overlay} onClick={onClose}>
+      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.modalHead}>
+          <div style={styles.modalTitle}>Chiffre d'affaires — {unit.tenant}</div>
+          <IconBtn onClick={onClose} title="Fermer"><X size={14} /></IconBtn>
+        </div>
+        <div style={styles.modalBody}>
+          <Field label="Mois">
+            <input style={styles.input} type="month" value={period} onChange={(e) => e.target.value && changePeriod(e.target.value)} />
+          </Field>
+          <Field label="Chiffre d'affaires déclaré du mois (DH)">
+            <input style={styles.input} type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" autoFocus />
+          </Field>
+          <div style={styles.receiptPreview}>
+            <div style={styles.receiptRow}><span>{fmtRate(unit.turnoverRate)} du CA</span><span>{fmt(Math.round(((Number(amount) || 0) * Number(unit.turnoverRate)) / 100))}</span></div>
+            <div style={styles.receiptRow}><span>Minimum garanti</span><span>{fmt(unit.rent)}</span></div>
+            <div style={styles.divider} />
+            <div style={styles.receiptRow}><span>Loyer dû pour {periodLabelFr(period)}</span><strong>{fmt(preview)}</strong></div>
+          </div>
+        </div>
+        <div style={styles.modalActions}>
+          <button type="button" style={styles.secondaryBtn} onClick={onClose}>Annuler</button>
+          <button type="button" style={styles.primaryBtn} onClick={() => onSave(propertyId, unit.id, period, amount)}>Enregistrer</button>
         </div>
       </div>
     </div>
@@ -1842,7 +1951,7 @@ function legalBasis(unit) {
 function buildLetterText(tier, unit, property, unpaidMonths) {
   const monthsOldestFirst = unpaidMonths.slice().reverse();
   const monthsLabels = monthsOldestFirst.map(periodLabelFr).join(", ");
-  const totalDue = unpaidMonths.length * (Number(unit.rent) || 0);
+  const totalDue = unpaidMonths.reduce((sum, m) => sum + rentDue(unit, m), 0);
   const legal = legalBasis(unit);
   const addressPart = property.address ? ", " + property.address : "";
   const today = new Date().toLocaleDateString("fr-FR");
@@ -1912,7 +2021,7 @@ function LetterModal({ data, onClose }) {
     setDownloaded(false);
   }
 
-  const totalDue = unpaidMonths.length * (Number(unit.rent) || 0);
+  const totalDue = unpaidMonths.reduce((sum, m) => sum + rentDue(unit, m), 0);
   const tierNames = { 1: "1er rappel", 2: "2e avertissement", 3: "Mise en demeure" };
   const fileTag = { 1: "rappel", 2: "avertissement", 3: "mise-en-demeure" };
 
