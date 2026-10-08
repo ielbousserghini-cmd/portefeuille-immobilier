@@ -2,7 +2,8 @@ require("dotenv").config();
 const path = require("path");
 const express = require("express");
 const cookieParser = require("cookie-parser");
-const { migrate, seedAdmin } = require("./db");
+const { pool, migrate, seedAdmin } = require("./db");
+const { checkAndSendAlerts } = require("./alerts");
 
 const authRoutes = require("./routes/auth");
 const portfolioRoutes = require("./routes/portfolio");
@@ -12,10 +13,17 @@ const avancementRoutes = require("./routes/avancement");
 const budgetRoutes = require("./routes/budget");
 const planningRoutes = require("./routes/planning");
 const documentsRoutes = require("./routes/documents");
+const aiImportRoutes = require("./routes/ai-import");
+const alertsRoutes = require("./routes/alerts");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Le portefeuille entier (biens, locaux, historique des paiements) est envoyé
+// en un seul JSON à chaque sauvegarde : la limite par défaut d'Express (100 Ko)
+// serait vite dépassée avec un mall de plus de 100 locaux. On l'élève à 10 Mo
+// pour cette seule route ; les autres gardent la limite par défaut.
+app.use("/api/portfolio", express.json({ limit: "10mb" }));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -27,6 +35,8 @@ app.use("/api", avancementRoutes);
 app.use("/api", budgetRoutes);
 app.use("/api", planningRoutes);
 app.use("/api", documentsRoutes);
+app.use("/api/ai", aiImportRoutes);
+app.use("/api", alertsRoutes);
 
 // Sert le frontend React construit (dossier dist/, généré par `vite build`).
 const distDir = path.join(__dirname, "..", "dist");
@@ -43,12 +53,22 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Erreur interne du serveur." });
 });
 
+// Vérification périodique des alertes bail/révision (voir server/alerts.js).
+// Render (plan gratuit) met le service en veille après 15 min d'inactivité :
+// cette boucle ne tourne donc que pendant que le service est éveillé, en plus
+// de la vérification déclenchée à chaque chargement du Tableau de bord par
+// un admin (route /api/alerts/check-now). Ce n'est pas un vrai cron fiable à
+// heure fixe, mais ça couvre l'usage normal (l'app est régulièrement visitée).
+const ALERTS_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
+
 async function start() {
   await migrate();
   await seedAdmin();
   app.listen(PORT, () => {
     console.log(`Serveur démarré sur le port ${PORT}`);
   });
+  setTimeout(() => checkAndSendAlerts(pool), 10000);
+  setInterval(() => checkAndSendAlerts(pool), ALERTS_INTERVAL_MS);
 }
 
 start().catch((err) => {

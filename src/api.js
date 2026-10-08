@@ -26,6 +26,29 @@ async function request(method, url, body) {
   return data;
 }
 
+// Variante pour l'envoi de fichiers (import Excel IA, analyse de contrat) :
+// pas de Content-Type manuel, le navigateur gère le boundary multipart.
+async function uploadRequest(url, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(url, { method: "POST", credentials: "include", body: formData });
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // idem request() ci-dessus
+  }
+
+  if (!res.ok) {
+    const message = data?.error || `Erreur ${res.status}`;
+    const error = new Error(message);
+    error.status = res.status;
+    throw error;
+  }
+  return data;
+}
+
 export const api = {
   login: (username, password) => request("POST", "/api/login", { username, password }),
   logout: () => request("POST", "/api/logout"),
@@ -75,4 +98,11 @@ export const api = {
   listDocuments: (chantierId) => request("GET", `/api/chantiers/${chantierId}/documents`),
   addDocument: (data) => request("POST", "/api/documents", data),
   deleteDocument: (docId) => request("DELETE", `/api/documents/${docId}`),
+
+  // --- Fonctionnalités IA (module Loyers) ---
+  // withProperty : l'IA déduit aussi le bien (nom, ville, adresse, type).
+  aiFileImport: (file, { withProperty = false } = {}) =>
+    uploadRequest(`/api/ai/file-import${withProperty ? "?withProperty=1" : ""}`, file),
+  aiContractAnalyze: (file) => uploadRequest("/api/ai/contract-analyze", file),
+  checkAlertsNow: () => request("POST", "/api/alerts/check-now"),
 };

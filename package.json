@@ -4,6 +4,9 @@
   "description": "Gestion locative multi-utilisateurs (admin / employé) avec base de données PostgreSQL",
   "private": true,
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "vite build",
     "dev:client": "vite",
@@ -17,9 +20,13 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": ">=0.400.0",
+    "mammoth": "^1.11.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.10",
     "pg": "^8.12.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",

@@ -172,3 +172,67 @@ service Render **existant** (Dashboard Render → ton service → Environment) :
 Au premier démarrage après ce déploiement, le serveur crée automatiquement
 les nouvelles tables du module Chantiers (elles n'existent pas encore dans la
 base) sans toucher aux tables `users`/`portfolio` existantes ni à leur contenu.
+
+## Fonctionnalités IA
+
+Le module Loyers peut lire vos fichiers et remplir l'application tout seul
+(IA Claude, d'Anthropic). Formats acceptés : Excel (.xlsx, .xls), CSV, PDF
+(y compris scannés), Word (.docx) et photos (JPG, PNG) — peu importe la mise
+en page. Vous pouvez glisser-déposer le fichier ou cliquer pour le choisir.
+
+- **En créant un bien** (« Mes biens » → « Ajouter un immeuble / bien ») :
+  déposez l'état locatif dans la zone en haut du formulaire. L'IA remplit le
+  nom, le type, la ville, l'adresse et le titre foncier, et prépare tous les
+  locaux (locataires, loyers, dates de bail), qui sont créés en même temps que
+  le bien quand vous cliquez « Enregistrer ».
+- **Dans un bien existant** : bouton « Importer un fichier (IA) » en haut de la
+  page du bien. Les nouveaux locaux sont ajoutés ; un local qui porte déjà le
+  même nom est mis à jour au lieu d'être dupliqué. Vous pouvez donc réimporter
+  votre état locatif à jour sans créer de doublons.
+- **Depuis n'importe où** : bouton « Importer un fichier (IA) » à côté des
+  onglets. L'IA reconnaît le bien concerné (s'il existe déjà, elle le
+  sélectionne ; sinon elle propose d'en créer un nouveau, pré-rempli).
+- **En ajoutant un local** : déposez le contrat de bail (PDF, Word ou photo) :
+  l'IA remplit le locataire, le loyer, les dates et la date de révision.
+
+Dans tous les cas, un aperçu modifiable s'affiche avant l'enregistrement :
+rien n'est écrit dans la base tant que vous n'avez pas confirmé. Les fichiers
+sont analysés à la volée et jamais stockés sur le serveur. Ces fonctions sont
+réservées aux administrateurs.
+
+Pour les activer, il faut une clé API Anthropic :
+
+1. Va sur https://console.anthropic.com, crée un compte si besoin, ajoute un
+   moyen de paiement (facturation à l'usage, quelques centimes par import),
+   puis dans **API Keys** crée une nouvelle clé.
+2. Sur Render (Dashboard → ton service → Environment), ajoute la variable
+   `ANTHROPIC_API_KEY` avec cette valeur, puis enregistre : Render redéploie.
+3. Optionnel : `ANTHROPIC_MODEL` force un modèle Claude précis. Sans cette
+   variable, l'app utilise un modèle Sonnet récent et, si ce modèle est un jour
+   retiré, bascule automatiquement sur le plus récent disponible.
+
+Tant que `ANTHROPIC_API_KEY` n'est pas définie, les boutons IA affichent un
+message clair expliquant quoi faire — le reste de l'app fonctionne normalement.
+
+## Alertes par email
+
+En plus des rappels déjà visibles dans le Tableau de bord ("Fins de bail à
+venir" et locaux éligibles à une révision de loyer), le serveur peut envoyer
+un email récapitulatif dès qu'une nouvelle échéance entre dans la fenêtre des
+30 prochains jours (fin de bail, ou révision triennale de loyer possible).
+Chaque alerte n'est envoyée qu'une seule fois.
+
+Pour l'activer, ajoute ces variables sur Render (Environment) :
+
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` — les
+  identifiants d'un compte email capable d'envoyer via SMTP (ex. un compte
+  Gmail avec un "mot de passe d'application", ou un service comme Brevo/
+  SendGrid, qui ont un plan gratuit).
+- `ALERT_EMAIL_TO` — l'adresse qui doit recevoir ces alertes (la tienne).
+
+Sans ces variables, les alertes restent visibles dans le Tableau de bord mais
+aucun email n'est envoyé (c'est journalisé côté serveur, visible dans les
+logs Render). Le plan gratuit Render met le service en veille après 15
+minutes d'inactivité : la vérification tourne au démarrage, toutes les 12h
+pendant que le service est éveillé, et à chaque ouverture de l'application par
+un admin — ce qui couvre l'usage normal.
