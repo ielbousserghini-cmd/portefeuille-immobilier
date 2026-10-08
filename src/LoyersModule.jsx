@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { Building2, Store, Landmark, Plus, X, Pencil, Trash2, ChevronDown, ChevronRight, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Circle, MapPin, Download, Upload, CalendarClock, DoorOpen, FileText, Printer, Copy, Receipt, Mail, MessageCircle, Percent, Search, CheckCheck, Undo2, ChevronLeft, Sparkles, Loader2 } from "lucide-react";
 import { api } from "./api";
 import { fontImport, styles, IconBtn } from "./theme.jsx";
@@ -461,7 +461,7 @@ export default function LoyersModule({ currentUser }) {
       {modal && modal.type === "letter" && <LetterModal data={modal.data} onClose={() => setModal(null)} />}
       {modal && modal.type === "revision" && <RevisionModal data={modal.data} onClose={() => setModal(null)} onConfirm={applyRentRevision} />}
       {modal && modal.type === "turnover" && <TurnoverModal data={modal.data} onClose={() => setModal(null)} onSave={saveTurnover} />}
-      {modal && modal.type === "ai-excel" && <AiExcelImportModal properties={properties} presetTargetId={modal.targetId} onClose={() => setModal(null)} onConfirm={importAiUnits} />}
+      {modal && modal.type === "ai-excel" && <AiExcelImportModal properties={properties} presetTargetId={modal.targetId} initialFile={modal.file} onClose={() => setModal(null)} onConfirm={importAiUnits} />}
       {modal && !["receipt", "letter", "revision", "turnover", "ai-excel"].includes(modal.type) && (
         <Modal
           modal={modal}
@@ -470,6 +470,7 @@ export default function LoyersModule({ currentUser }) {
           onSaveUnit={saveUnit}
           onSaveBulk={saveBulk}
           onSaveExpense={addExpense}
+          onImportFile={(propertyId, file) => setModal({ type: "ai-excel", targetId: propertyId, file })}
         />
       )}
     </>
@@ -1868,6 +1869,11 @@ function Fiscalite({ properties, expenses }) {
 
 const AI_ACCEPT_ALL = ".xlsx,.xls,.xlsm,.ods,.csv,.pdf,.docx,.txt,.jpg,.jpeg,.png,.webp";
 const AI_ACCEPT_CONTRACT = ".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp";
+function isSpreadsheet(file) {
+  return /\.(xlsx|xlsm|xls|ods|csv)$/i.test(file?.name || "") || /spreadsheet|ms-excel|csv/.test(file?.type || "");
+}
+const aiOrSeparator = { display: "flex", alignItems: "center", gap: 10, margin: "16px 0 14px", fontSize: 12, color: "var(--text-dim)" };
+const aiOrLine = { flex: 1, height: 1, background: "var(--border)" };
 
 const aiStyles = {
   drop: { display: "flex", alignItems: "center", gap: 14, padding: "18px 18px", borderRadius: 12, border: "1.5px dashed var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-body)", textAlign: "left", width: "100%" },
@@ -2010,7 +2016,7 @@ function AiUnitsPreview({ rows, setRows, existingUnits }) {
   );
 }
 
-function AiExcelImportModal({ properties, presetTargetId, onClose, onConfirm }) {
+function AiExcelImportModal({ properties, presetTargetId, initialFile, onClose, onConfirm }) {
   const [phase, setPhase] = useState("pick"); // pick | loading | preview
   const [error, setError] = useState(null);
   const [warnings, setWarnings] = useState([]);
@@ -2020,6 +2026,14 @@ function AiExcelImportModal({ properties, presetTargetId, onClose, onConfirm }) 
   const [newProp, setNewProp] = useState({ name: "", type: "immeuble", city: "", address: "", titleDeed: "" });
   const lockedTarget = Boolean(presetTargetId);
   const target = properties.find((p) => p.id === targetId);
+
+  // Fichier déjà déposé depuis « Ajouter un local » / « Ajouter en série » :
+  // l'analyse démarre tout de suite, sans redemander le fichier.
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (initialFile && !startedRef.current) { startedRef.current = true; handleFile(initialFile); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleFile(file) {
     setError(null);
@@ -2155,7 +2169,7 @@ function AiExcelImportModal({ properties, presetTargetId, onClose, onConfirm }) 
   );
 }
 
-function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveExpense }) {
+function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveExpense, onImportFile }) {
   const [form, setForm] = useState(modal.data);
   const [formError, setFormError] = useState(null);
   const [aiContractState, setAiContractState] = useState(null); // null | "loading" | {note}
@@ -2399,6 +2413,17 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
           </>
         ) : isBulk ? (
           <>
+            {onImportFile && (
+              <>
+                <AiDropZone
+                  busy={false}
+                  onFile={(f) => onImportFile(modal.propertyId, f)}
+                  title="Importer depuis un fichier Excel"
+                  hint="Excel, CSV, PDF ou photo de l'état locatif : l'IA crée tous les locaux d'un coup, avec locataires, loyers et dates. Tu vérifies avant d'enregistrer."
+                />
+                <div style={aiOrSeparator}><span style={aiOrLine} />ou crée une série de locaux vides<span style={aiOrLine} /></div>
+              </>
+            )}
             <Field label="Type de local">
               <select style={styles.input} value={form.unitType || "magasin"} onChange={(e) => set("unitType", e.target.value)}>
                 {Object.entries(UNIT_TYPES).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
@@ -2442,10 +2467,12 @@ function Modal({ modal, onClose, onSaveProperty, onSaveUnit, onSaveBulk, onSaveE
               <div style={{ marginBottom: 14 }}>
                 <AiDropZone
                   busy={aiContractState === "loading"}
-                  onFile={handleContractFile}
-                  accept={AI_ACCEPT_CONTRACT}
-                  title="Remplir depuis le contrat de bail"
-                  hint="PDF, Word ou photo du contrat : l'IA remplit le locataire, le loyer et les dates du bail."
+                  onFile={(f) => (onImportFile && !form.id && isSpreadsheet(f) ? onImportFile(modal.propertyId, f) : handleContractFile(f))}
+                  accept={form.id ? AI_ACCEPT_CONTRACT : AI_ACCEPT_ALL}
+                  title={form.id ? "Remplir depuis le contrat de bail" : "Remplir depuis un contrat ou un fichier Excel"}
+                  hint={form.id
+                    ? "PDF, Word ou photo du contrat : l'IA remplit le locataire, le loyer et les dates du bail."
+                    : "Contrat de bail (PDF, Word, photo) : l'IA remplit ce local. Fichier Excel avec plusieurs locaux : ils sont tous importés d'un coup."}
                 />
               </div>
             ) : (
