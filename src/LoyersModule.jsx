@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
-import { Building2, Store, Landmark, Plus, X, Pencil, Trash2, ChevronDown, ChevronRight, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Circle, MapPin, Download, Upload, CalendarClock, DoorOpen, FileText, Printer, Copy, Receipt, Mail, MessageCircle, Percent, Search, CheckCheck, Undo2, ChevronLeft, Sparkles, Loader2 } from "lucide-react";
+import { Building2, Store, Landmark, Plus, X, Pencil, Trash2, ChevronDown, ChevronRight, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Circle, MapPin, Download, Upload, CalendarClock, DoorOpen, FileText, Printer, Copy, Receipt, Mail, MessageCircle, Percent, Search, CheckCheck, Undo2, ChevronLeft, Sparkles, Loader2, Rows3 } from "lucide-react";
 import { api } from "./api";
 import { fontImport, styles, IconBtn } from "./theme.jsx";
 
@@ -1372,6 +1372,9 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
 // Sous-catégories de la grille : un en-tête discret par immeuble, puis ses
 // locaux en retrait, rattachés par un fin trait vertical.
 const ledgerGroupStyle = { padding: 0, background: "color-mix(in srgb, var(--surface-2) 70%, var(--surface))", borderBottom: "1px solid var(--border)", borderTop: "1px solid var(--border)", textAlign: "left" };
+const ledgerToolbar = { display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 10, flexWrap: "wrap" };
+const ledgerToolBtn = { display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-dim)", fontSize: 12.5, fontWeight: 500, fontFamily: "var(--font-body)", cursor: "pointer" };
+const ledgerToolBtnOn = { color: "var(--text)", borderColor: "var(--border-strong)", background: "var(--surface-2)" };
 const ledgerGroupBtn = { position: "sticky", left: 0, display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 16px", background: "transparent", border: "none", cursor: "pointer", fontFamily: "var(--font-body)", color: "var(--text)", fontSize: 13, fontWeight: 600 };
 
 function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, canTogglePayment }) {
@@ -1402,6 +1405,19 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
     });
   }
   const thisPeriod = periodKey(new Date().getFullYear(), new Date().getMonth());
+  // Vue compacte : lignes plus basses, locataire et local sur une seule ligne.
+  // Mémorisée pour ce navigateur ; les immeubles, eux, s'ouvrent toujours
+  // tous dépliés à l'arrivée sur la page.
+  const [compact, setCompact] = useState(() => {
+    try { return localStorage.getItem("pf-ledger-compact") === "1"; } catch { return false; }
+  });
+  function toggleCompact() {
+    setCompact((c) => {
+      try { localStorage.setItem("pf-ledger-compact", c ? "0" : "1"); } catch { /* ignoré */ }
+      return !c;
+    });
+  }
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.id));
   return (
     <div className="page" style={styles.page}>
       <header className="page-header-row" style={styles.pageHeaderRow}>
@@ -1423,6 +1439,18 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
           <div style={styles.emptyStateSub}>Ajoutez un locataire à un local dans "Mes biens" pour suivre ses loyers ici.</div>
         </div>
       ) : (
+        <>
+        <div style={ledgerToolbar}>
+          {groups.length > 1 && (
+            <button type="button" style={ledgerToolBtn} onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.id)))}>
+              <ChevronDown size={14} style={{ transform: allCollapsed ? "rotate(-90deg)" : "none", transition: "transform .15s" }} />
+              {allCollapsed ? "Tout déplier" : "Tout replier"}
+            </button>
+          )}
+          <button type="button" style={{ ...ledgerToolBtn, ...(compact ? ledgerToolBtnOn : {}) }} onClick={toggleCompact} aria-pressed={compact}>
+            <Rows3 size={14} /> Vue compacte
+          </button>
+        </div>
         <div style={styles.ledgerScroll}>
           <table style={styles.ledgerTable}>
             <thead>
@@ -1448,23 +1476,32 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
                 </tr>
                 {!collapsed.has(g.id) && g.units.map((u) => (
                 <tr key={u.id}>
-                  <td style={{ ...styles.ledgerRowLabel, paddingLeft: 38 }}>
+                  <td style={{ ...styles.ledgerRowLabel, paddingLeft: 38, ...(compact ? { paddingTop: 5, paddingBottom: 5 } : {}) }}>
                     <span aria-hidden="true" style={{ position: "absolute", left: 22, top: 0, bottom: 0, width: 1, background: "var(--border-strong)" }} />
-                    <div style={styles.ledgerTenant}>{u.tenant}</div>
-                    <div style={styles.ledgerUnit}>{u.name}</div>
+                    {compact ? (
+                      <div style={{ ...styles.ledgerTenant, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 360 }}>
+                        <span style={{ color: "var(--text-dim)", fontWeight: 400, marginRight: 8 }}>{u.name}</span>{u.tenant}
+                      </div>
+                    ) : (
+                      <>
+                        <div style={styles.ledgerTenant}>{u.tenant}</div>
+                        <div style={styles.ledgerUnit}>{u.name}</div>
+                      </>
+                    )}
                   </td>
                   {MOIS.map((_, mi) => {
                     const period = periodKey(ledgerYear, mi);
                     const paid = payments?.[`${u.id}|${period}`]?.paid;
                     const isFuture = new Date(ledgerYear, mi, 1) > new Date();
                     return (
-                      <td key={mi} style={styles.ledgerCell}>
+                      <td key={mi} style={compact ? { ...styles.ledgerCell, paddingTop: 4, paddingBottom: 4 } : styles.ledgerCell}>
                         <button
                           onClick={() => !isFuture && togglePayment(u.id, period, rentDue(u, period))}
                           disabled={isFuture || !canTogglePayment(u.id, period)}
                           title={`${isFuture ? "Mois à venir" : !canTogglePayment(u.id, period) ? (paid ? "Payé" : "Impayé") : paid ? "Marquer impayé" : "Marquer payé"} · ${fmt(rentDue(u, period))}${payments?.[`${u.id}|${period}`]?.markedBy ? ` · par ${payments[`${u.id}|${period}`].markedBy}` : ""}`}
                           style={{
                             ...styles.ledgerDot,
+                            ...(compact ? { width: 16, height: 16, borderRadius: 5 } : {}),
                             background: isFuture ? "transparent" : paid ? "var(--good)" : "var(--bad-dim)",
                             border: isFuture ? "1px dashed var(--border-strong)" : paid ? "1px solid var(--good)" : "1px solid color-mix(in srgb, var(--bad) 45%, transparent)",
                             cursor: isFuture || !canTogglePayment(u.id, period) ? "default" : "pointer",
@@ -1480,6 +1517,7 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
             </tbody>
           </table>
         </div>
+        </>
       )}
       <div style={styles.legend}>
         <span style={styles.legendItem}><i style={{ ...styles.legendDot, background: "var(--good)" }} /> Payé</span>
