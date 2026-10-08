@@ -33,6 +33,8 @@ export const api = {
 
   getPortfolio: () => request("GET", "/api/portfolio"),
   savePortfolio: (data) => request("PUT", "/api/portfolio", data),
+  // entries: [{ unitId, period: "YYYY-MM", paid: true|false, amount }]
+  setPayments: (entries) => request("POST", "/api/portfolio/payments", { entries }),
 
   listUsers: () => request("GET", "/api/users"),
   createUser: (user) => request("POST", "/api/users", user),

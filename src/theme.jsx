@@ -141,6 +141,7 @@ input, select, textarea { transition: border-color .15s var(--ease), box-shadow 
 input:hover:not(:focus), select:hover:not(:focus), textarea:hover:not(:focus) { border-color: var(--border-strong) !important; }
 input:focus, select:focus, textarea:focus { outline: none !important; border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-soft); background-color: var(--surface) !important; }
 input::placeholder, textarea::placeholder { color: var(--text-faint); }
+input[type="search"]::-webkit-search-cancel-button, input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
 .icon-btn:not(:disabled):hover { color: var(--text) !important; border-color: var(--border-strong) !important; }
 .icon-btn-danger:not(:disabled):hover { color: var(--bad) !important; border-color: var(--bad) !important; }
 .nav-item:not(.is-active):hover { color: var(--text) !important; }
@@ -148,6 +149,8 @@ input::placeholder, textarea::placeholder { color: var(--text-faint); }
 button[style*="background: var(--primary)"]:not(:disabled):hover { box-shadow: none; opacity: 0.88; }
 .tab-btn:not(.is-active):hover { color: var(--text) !important; box-shadow: none !important; }
 .tab-btn:hover { box-shadow: none !important; }
+.pay-row:last-child { border-bottom: none !important; }
+.pay-row:hover { background: var(--hover); }
 .card-interactive { transition: border-color .18s var(--ease), box-shadow .18s var(--ease), transform .18s var(--ease); }
 .card-interactive:hover { border-color: var(--border-strong) !important; box-shadow: var(--shadow-md) !important; transform: translateY(-2px); }
 tbody tr > td { transition: background-color .12s; }
@@ -191,6 +194,9 @@ a { color: var(--accent); }
   .kpi-grid > div { padding: 14px !important; }
   .kpi-value { font-size: 19px !important; white-space: normal !important; }
   .two-col { grid-template-columns: 1fr !important; }
+  .pay-row { flex-wrap: wrap; gap: 8px 12px !important; }
+  .pay-action { min-width: 0 !important; width: 100%; justify-content: stretch !important; }
+  .pay-action > button { flex: 1; }
   .building-grid { grid-template-columns: 1fr !important; }
 }
 `;
@@ -281,6 +287,15 @@ export const styles = {
   buildingMeta: { fontSize: 12.5, color: "var(--text-dim)" },
   buildingStock: { fontSize: 12, color: "var(--text-dim)", display: "flex", gap: 6, marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" },
   buildingDot: { color: "var(--text-faint)" },
+  searchWrap: { position: "relative", display: "flex", alignItems: "center" },
+  searchInput: { width: "100%", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 44px 14px 46px", fontSize: 15, color: "var(--text)", fontFamily: "var(--font-body)", boxShadow: "var(--shadow-sm)" },
+  searchClear: { position: "absolute", right: 10, width: 28, height: 28, borderRadius: 7, border: "none", background: "transparent", color: "var(--text-dim)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
+  payList: { display: "flex", flexDirection: "column", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-sm)", overflow: "hidden" },
+  payRow: { display: "flex", alignItems: "center", gap: 16, padding: "12px 16px", borderBottom: "1px solid var(--border)" },
+  payTenant: { fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  payMeta: { fontSize: 12, color: "var(--text-dim)", marginTop: 2 },
+  payAmount: { fontSize: 14, fontWeight: 600, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" },
+  payAction: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, minWidth: 170 },
   buildingMoney: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, padding: "12px 0", borderTop: "1px solid var(--border)" },
   buildingMoneyLabel: { fontSize: 11.5, color: "var(--text-dim)", marginBottom: 3 },
   buildingMoneyValue: { fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" },

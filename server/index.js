@@ -16,7 +16,9 @@ const documentsRoutes = require("./routes/documents");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+// Le portefeuille entier (biens, locaux, paiements) transite en un seul JSON
+// lors des sauvegardes et imports : la limite par défaut (100 Ko) est trop basse.
+app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
 app.use("/api", authRoutes);

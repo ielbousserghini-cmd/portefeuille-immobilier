@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Building2, Store, Landmark, Plus, X, Pencil, Trash2, ChevronDown, ChevronRight, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Circle, MapPin, Download, Upload, CalendarClock, DoorOpen, FileText, Printer, Copy, Receipt, Mail, MessageCircle, Percent } from "lucide-react";
+import { Building2, Store, Landmark, Plus, X, Pencil, Trash2, ChevronDown, ChevronRight, Wallet, TrendingUp, AlertTriangle, CheckCircle2, Circle, MapPin, Download, Upload, CalendarClock, DoorOpen, FileText, Printer, Copy, Receipt, Mail, MessageCircle, Percent, Search, CheckCheck, Undo2, ChevronLeft } from "lucide-react";
 import { api } from "./api";
 import { fontImport, styles, IconBtn } from "./theme.jsx";
 
@@ -58,7 +58,7 @@ export default function LoyersModule({ currentUser }) {
   const [payments, setPayments] = useState(null);
   const [expenses, setExpenses] = useState(null);
   const [loaded, setLoaded] = useState(false);
-  const [tab, setTab] = useState(isAdmin ? "dashboard" : "biens");
+  const [tab, setTab] = useState(isAdmin ? "dashboard" : "encaisser");
   const [selectedPropertyId, setSelectedPropertyId] = useState(null);
   const [modal, setModal] = useState(null); // {type:'property'|'unit', data, propertyId}
   const [ledgerYear, setLedgerYear] = useState(new Date().getFullYear());
@@ -93,7 +93,7 @@ export default function LoyersModule({ currentUser }) {
     })();
   }, []);
 
-  async function persist(nextProps, nextPay, nextExp) {
+  async function persist(nextProps, nextPay, nextExp, { replacePayments = false } = {}) {
     // Un compte "employé" est en lecture seule : aucun bouton de l'interface
     // ne devrait appeler persist() pour lui, mais on bloque aussi ici par
     // sécurité (le serveur refuserait de toute façon l'écriture).
@@ -105,7 +105,12 @@ export default function LoyersModule({ currentUser }) {
     setPayments(pay);
     setExpenses(exp);
     try {
-      await api.savePortfolio({ properties: p, payments: pay, expenses: exp });
+      // Les paiements ne sont envoyés que lors d'un import : le reste du temps
+      // ils passent par api.setPayments (voir setPaymentStatus), pour ne
+      // jamais écraser un paiement enregistré entre-temps par un employé.
+      await api.savePortfolio(replacePayments
+        ? { properties: p, payments: pay, expenses: exp, replacePayments: true }
+        : { properties: p, expenses: exp });
     } catch {
       setError("Échec de la sauvegarde. Réessayez.");
       setTimeout(() => setError(null), 3000);
@@ -239,17 +244,46 @@ export default function LoyersModule({ currentUser }) {
     setModal(null);
   }
 
-  function togglePayment(unitId, period, amount) {
-    const key = `${unitId}|${period}`;
-    const cur = payments[key];
-    const next = { ...payments };
-    if (cur?.paid) {
-      delete next[key];
-    } else {
-      next[key] = { paid: true, amount, datePaid: new Date().toISOString().slice(0, 10) };
-    }
-    persist(properties, next);
+  // Un employé peut enregistrer un paiement, et annuler uniquement ceux qu'il a
+  // lui-même enregistrés (même règle côté serveur).
+  function canTogglePayment(unitId, period) {
+    if (isAdmin) return true;
+    const cur = payments?.[`${unitId}|${period}`];
+    return !cur?.paid || cur.markedById === currentUser.id;
   }
+
+  // entries : [{ unitId, period, paid, amount }]. Mise à jour immédiate de
+  // l'écran, puis enregistrement ; en cas d'échec on revient en arrière.
+  async function setPaymentStatus(entries) {
+    const before = payments;
+    const next = { ...payments };
+    const today = new Date().toISOString().slice(0, 10);
+    entries.forEach((e) => {
+      const key = `${e.unitId}|${e.period}`;
+      if (e.paid) next[key] = { paid: true, amount: e.amount, datePaid: today, markedBy: currentUser.name, markedById: currentUser.id };
+      else delete next[key];
+    });
+    setPayments(next);
+    try {
+      const { payments: saved } = await api.setPayments(entries);
+      setPayments((cur) => {
+        const merged = { ...cur };
+        Object.entries(saved || {}).forEach(([k, v]) => { if (v) merged[k] = v; else delete merged[k]; });
+        return merged;
+      });
+    } catch (err) {
+      setPayments(before);
+      setError(err.message || "Échec de l'enregistrement du paiement. Réessaie.");
+      setTimeout(() => setError(null), 4000);
+    }
+  }
+
+  function togglePayment(unitId, period, amount) {
+    if (!canTogglePayment(unitId, period)) return;
+    const paid = payments?.[`${unitId}|${period}`]?.paid;
+    setPaymentStatus([{ unitId, period, paid: !paid, amount }]);
+  }
+
 
   function addExpense(propertyId, data) {
     const entry = {
@@ -292,7 +326,7 @@ export default function LoyersModule({ currentUser }) {
       try {
         const data = JSON.parse(reader.result);
         if (!Array.isArray(data.properties)) throw new Error("Fichier invalide");
-        persist(data.properties, data.payments || {}, data.expenses || []);
+        persist(data.properties, data.payments || {}, data.expenses || [], { replacePayments: true });
       } catch {
         setError("Ce fichier ne semble pas être une sauvegarde valide.");
         setTimeout(() => setError(null), 4000);
@@ -315,6 +349,15 @@ export default function LoyersModule({ currentUser }) {
       <style>{fontImport}</style>
       <LoyersNav tab={tab} setTab={setTab} isAdmin={isAdmin} onExport={exportBackup} onImport={importBackup} />
       {error && <div role="alert" style={styles.errorBanner}><AlertTriangle size={16} strokeWidth={2} color="var(--bad)" style={{ flexShrink: 0 }} />{error}</div>}
+      {tab === "encaisser" && (
+        <Encaisser
+          allUnits={allUnits}
+          payments={payments}
+          curPeriod={curPeriod}
+          setPaymentStatus={setPaymentStatus}
+          canTogglePayment={canTogglePayment}
+        />
+      )}
       {tab === "dashboard" && isAdmin && <Dashboard stats={stats} properties={properties} allUnits={allUnits} expenses={expenses} setModal={setModal} />}
       {tab === "biens" && (
         <Biens
@@ -331,6 +374,7 @@ export default function LoyersModule({ currentUser }) {
           payments={payments}
           curPeriod={curPeriod}
           togglePayment={togglePayment}
+          canTogglePayment={canTogglePayment}
           expenses={expenses}
           openAddExpense={openAddExpense}
           deleteExpense={deleteExpense}
@@ -345,6 +389,7 @@ export default function LoyersModule({ currentUser }) {
           ledgerYear={ledgerYear}
           setLedgerYear={setLedgerYear}
           togglePayment={togglePayment}
+          canTogglePayment={canTogglePayment}
           isAdmin={isAdmin}
         />
       )}
@@ -376,11 +421,13 @@ function LoyersNav({ tab, setTab, isAdmin, onExport, onImport }) {
   const items = isAdmin
     ? [
         { id: "dashboard", label: "Tableau de bord", icon: TrendingUp },
+        { id: "encaisser", label: "Encaisser", icon: Search },
         { id: "biens", label: "Mes biens", icon: Building2 },
         { id: "loyers", label: "Suivi des loyers", icon: Wallet },
         { id: "fiscalite", label: "Fiscalité", icon: Percent },
       ]
     : [
+        { id: "encaisser", label: "Encaisser", icon: Search },
         { id: "biens", label: "Mes biens", icon: Building2 },
         { id: "loyers", label: "Suivi des loyers", icon: Wallet },
       ];
@@ -710,7 +757,7 @@ function KpiCard({ icon: Icon, label, value, accent, suffix, progress }) {
   );
 }
 
-function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddProperty, openEditProperty, deleteProperty, openAddUnit, openAddBulk, openEditUnit, deleteUnit, payments, curPeriod, togglePayment, expenses, openAddExpense, deleteExpense, setModal, isAdmin }) {
+function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddProperty, openEditProperty, deleteProperty, openAddUnit, openAddBulk, openEditUnit, deleteUnit, payments, curPeriod, togglePayment, canTogglePayment, expenses, openAddExpense, deleteExpense, setModal, isAdmin }) {
   const selected = properties.find((p) => p.id === selectedPropertyId);
 
   if (selected) {
@@ -727,6 +774,7 @@ function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddP
         payments={payments}
         curPeriod={curPeriod}
         togglePayment={togglePayment}
+          canTogglePayment={canTogglePayment}
         expenses={(expenses || []).filter((e) => e.propertyId === selected.id)}
         openAddExpense={openAddExpense}
         deleteExpense={deleteExpense}
@@ -818,6 +866,173 @@ function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddP
   );
 }
 
+// --- Encaisser : écran de saisie rapide des paiements (employés et admins) ---
+// Une seule barre de recherche sur tous les locaux occupés du portefeuille :
+// locataire, local et immeuble, sans accents ni majuscules. Un mot qui est un
+// nombre doit correspondre exactement à un numéro ("jk 5" trouve Apt. 5 de JK,
+// pas Apt. 15).
+function normalize(str) {
+  return (str || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+function matchesQuery(u, tokens) {
+  if (!tokens.length) return true;
+  const hay = normalize(`${u.tenant} ${u.name} ${u.propertyName}`);
+  const words = hay.split(/[^a-z0-9]+/).filter(Boolean);
+  return tokens.every((t) => (/^\d+$/.test(t) ? words.includes(t) : hay.includes(t)));
+}
+function shiftPeriod(period, delta) {
+  const [y, m] = period.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return periodKey(d.getFullYear(), d.getMonth());
+}
+
+const ENCAISSER_LIMIT = 60;
+
+function Encaisser({ allUnits, payments, curPeriod, setPaymentStatus, canTogglePayment }) {
+  const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState(curPeriod);
+  const [filter, setFilter] = useState("unpaid");
+
+  const tokens = useMemo(() => normalize(query).split(/\s+/).filter(Boolean), [query]);
+  const rows = useMemo(() => {
+    return allUnits
+      .filter((u) => u.tenant && u.tenant.trim())
+      .filter((u) => matchesQuery(u, tokens))
+      .map((u) => ({ ...u, payment: payments?.[`${u.id}|${period}`], due: rentDue(u, period) }))
+      .sort((a, b) =>
+        a.propertyName.localeCompare(b.propertyName, "fr") ||
+        a.name.localeCompare(b.name, "fr", { numeric: true }));
+  }, [allUnits, payments, tokens, period]);
+
+  const unpaidRows = rows.filter((r) => !r.payment?.paid);
+  const paidRows = rows.filter((r) => r.payment?.paid);
+  const shown = filter === "unpaid" ? unpaidRows : filter === "paid" ? paidRows : rows;
+  const visible = shown.slice(0, ENCAISSER_LIMIT);
+  const isFuture = period > curPeriod;
+
+  function markAllShown() {
+    const targets = unpaidRows;
+    if (!targets.length) return;
+    const total = targets.reduce((sum, r) => sum + r.due, 0);
+    if (!window.confirm(`Marquer ${targets.length} loyer(s) comme payés pour ${periodLabelFr(period)}, pour un total de ${fmt(total)} ?`)) return;
+    setPaymentStatus(targets.map((r) => ({ unitId: r.id, period, paid: true, amount: r.due })));
+  }
+
+  const chips = [
+    { id: "unpaid", label: "À encaisser", count: unpaidRows.length },
+    { id: "paid", label: "Payés", count: paidRows.length },
+    { id: "all", label: "Tous", count: rows.length },
+  ];
+
+  return (
+    <div className="page" style={styles.page}>
+      <header className="page-header-row" style={styles.pageHeaderRow}>
+        <div>
+          <div style={styles.eyebrow}>Saisie des paiements</div>
+          <h1 style={styles.h1}>Encaisser un loyer</h1>
+        </div>
+        <div style={styles.yearSwitcher}>
+          <button style={styles.yearBtn} onClick={() => setPeriod(shiftPeriod(period, -1))} title="Mois précédent" aria-label="Mois précédent"><ChevronLeft size={15} /></button>
+          <span style={{ ...styles.yearLabel, minWidth: 120, textTransform: "capitalize" }}>{periodLabelFr(period)}</span>
+          <button style={styles.yearBtn} onClick={() => setPeriod(shiftPeriod(period, 1))} title="Mois suivant" aria-label="Mois suivant"><ChevronRight size={15} /></button>
+        </div>
+      </header>
+
+      <div style={styles.searchWrap}>
+        <Search size={18} strokeWidth={1.9} color="var(--text-faint)" style={{ position: "absolute", left: 16, pointerEvents: "none" }} />
+        <input
+          type="search"
+          style={styles.searchInput}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Rechercher un locataire, un appartement, un immeuble…  ex. « JK 5 », « Carrefour »"
+          autoFocus
+          aria-label="Rechercher un locataire, un appartement ou un immeuble"
+        />
+        {query && (
+          <button type="button" onClick={() => setQuery("")} style={styles.searchClear} title="Effacer" aria-label="Effacer la recherche"><X size={15} /></button>
+        )}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 0 16px" }}>
+        <div style={{ ...styles.tierSelector, margin: 0 }}>
+          {chips.map((c) => (
+            <button key={c.id} type="button" onClick={() => setFilter(c.id)} style={{ ...styles.tierBtn, flex: "none", padding: "6px 12px", ...(filter === c.id ? styles.tierBtnActive : {}) }}>
+              {c.label} <span style={{ color: "var(--text-faint)", marginLeft: 4 }}>{c.count}</span>
+            </button>
+          ))}
+        </div>
+        {tokens.length > 0 && unpaidRows.length > 1 && !isFuture && (
+          <button type="button" style={{ ...styles.secondaryBtn, marginLeft: "auto" }} onClick={markAllShown}>
+            <CheckCheck size={15} /> Tout marquer payé ({unpaidRows.length})
+          </button>
+        )}
+      </div>
+
+      {shown.length === 0 ? (
+        <div style={styles.emptyState}>
+          {filter === "unpaid" && rows.length > 0 ? <CheckCircle2 size={28} strokeWidth={1.5} color="var(--good)" /> : <Search size={28} strokeWidth={1.5} color="var(--text-dim)" />}
+          <div style={styles.emptyStateTitle}>
+            {filter === "unpaid" && rows.length > 0 ? "Tout est encaissé" : "Aucun résultat"}
+          </div>
+          <div style={styles.emptyStateSub}>
+            {filter === "unpaid" && rows.length > 0
+              ? `Tous les loyers correspondants sont payés pour ${periodLabelFr(period)}.`
+              : "Essaie avec le nom du locataire, le numéro de l'appartement ou le nom de l'immeuble."}
+          </div>
+        </div>
+      ) : (
+        <div style={styles.payList}>
+          {visible.map((r) => {
+            const paid = r.payment?.paid;
+            const allowed = canTogglePayment(r.id, period);
+            return (
+              <div key={r.id} className="pay-row" style={styles.payRow}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={styles.payTenant}>{r.tenant}</div>
+                  <div style={styles.payMeta}>{r.name} · {r.propertyName}</div>
+                </div>
+                <div className="pay-amount" style={{ textAlign: "right" }}>
+                  <div style={styles.payAmount}>{fmt(r.due)}</div>
+                  {isVariableRent(r) && (
+                    <div style={styles.payMeta}>{r.turnovers?.[period] ? `${fmtRate(r.turnoverRate)} du CA` : "minimum, CA non saisi"}</div>
+                  )}
+                </div>
+                <div className="pay-action" style={styles.payAction}>
+                  {paid ? (
+                    <>
+                      <span style={styles.tagGood} title={r.payment.markedBy ? `Enregistré par ${r.payment.markedBy}` : undefined}>
+                        <CheckCircle2 size={14} /> Payé{r.payment.datePaid ? ` le ${new Date(r.payment.datePaid).toLocaleDateString("fr-FR")}` : ""}
+                        {r.payment.markedBy ? <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>&nbsp;· {r.payment.markedBy}</span> : null}
+                      </span>
+                      {allowed && (
+                        <IconBtn onClick={() => setPaymentStatus([{ unitId: r.id, period, paid: false }])} title="Annuler ce paiement">
+                          <Undo2 size={13} />
+                        </IconBtn>
+                      )}
+                    </>
+                  ) : isFuture ? (
+                    <span style={{ fontSize: 12.5, color: "var(--text-dim)" }}>Mois à venir</span>
+                  ) : (
+                    <button type="button" style={styles.primaryBtn} onClick={() => setPaymentStatus([{ unitId: r.id, period, paid: true, amount: r.due }])}>
+                      <CheckCircle2 size={15} /> Marquer payé
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {shown.length > ENCAISSER_LIMIT && (
+            <div style={{ ...styles.emptyNote, textAlign: "center", padding: 14 }}>
+              {shown.length - ENCAISSER_LIMIT} autre(s) résultat(s) — précise ta recherche pour les voir.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Chiffres d'un immeuble pour le mois en cours : loyers encaissés / impayés
 // (loyer dû du mois, donc % du CA inclus pour les loyers variables), locaux
 // loués / vacants, taux de remplissage, et encaissé cumulé depuis janvier.
@@ -870,7 +1085,7 @@ function PortfolioSummary({ properties, payments, curPeriod }) {
   );
 }
 
-function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, openAddUnit, openAddBulk, openEditUnit, deleteUnit, payments, curPeriod, togglePayment, expenses, openAddExpense, deleteExpense, setModal, isAdmin }) {
+function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, openAddUnit, openAddBulk, openEditUnit, deleteUnit, payments, curPeriod, togglePayment, canTogglePayment, expenses, openAddExpense, deleteExpense, setModal, isAdmin }) {
   const Icon = TYPES[property.type]?.icon || Store;
   const units = property.units || [];
   const yieldPct = calcYield(property);
@@ -986,7 +1201,7 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
                           {u.leaseStart || "—"} → {u.leaseEnd || "—"}
                         </td>
                         <td style={styles.td}>
-                          {vacant ? "—" : isAdmin ? (
+                          {vacant ? "—" : canTogglePayment(u.id, curPeriod) ? (
                             <button
                               type="button"
                               onClick={() => togglePayment(u.id, curPeriod, rentDue(u, curPeriod))}
@@ -1079,7 +1294,7 @@ function BuildingDetail({ property, onBack, openEditProperty, deleteProperty, op
   );
 }
 
-function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, isAdmin }) {
+function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, canTogglePayment }) {
   const occupied = allUnits.filter((u) => u.tenant && u.tenant.trim());
   return (
     <div className="page" style={styles.page}>
@@ -1124,14 +1339,14 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
                     return (
                       <td key={mi} style={styles.ledgerCell}>
                         <button
-                          onClick={() => isAdmin && !isFuture && togglePayment(u.id, period, rentDue(u, period))}
-                          disabled={isFuture || !isAdmin}
-                          title={`${isFuture ? "Mois à venir" : !isAdmin ? (paid ? "Payé" : "Impayé") : paid ? "Marquer impayé" : "Marquer payé"} · ${fmt(rentDue(u, period))}`}
+                          onClick={() => !isFuture && togglePayment(u.id, period, rentDue(u, period))}
+                          disabled={isFuture || !canTogglePayment(u.id, period)}
+                          title={`${isFuture ? "Mois à venir" : !canTogglePayment(u.id, period) ? (paid ? "Payé" : "Impayé") : paid ? "Marquer impayé" : "Marquer payé"} · ${fmt(rentDue(u, period))}${payments?.[`${u.id}|${period}`]?.markedBy ? ` · par ${payments[`${u.id}|${period}`].markedBy}` : ""}`}
                           style={{
                             ...styles.ledgerDot,
                             background: isFuture ? "transparent" : paid ? "var(--good)" : "var(--bad-dim)",
                             border: isFuture ? "1px dashed var(--border-strong)" : paid ? "1px solid var(--good)" : "1px solid color-mix(in srgb, var(--bad) 45%, transparent)",
-                            cursor: isFuture || !isAdmin ? "default" : "pointer",
+                            cursor: isFuture || !canTogglePayment(u.id, period) ? "default" : "pointer",
                           }}
                         />
                       </td>

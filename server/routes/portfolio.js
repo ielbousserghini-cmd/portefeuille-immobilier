@@ -45,19 +45,119 @@ router.get("/", requireAuth, async (req, res) => {
   res.json(payload);
 });
 
-// Lecture-écriture globale du portefeuille, réservée aux admins : les comptes
+// Écriture des biens/locaux/charges, réservée aux admins : les comptes
 // employé n'ont, par construction, jamais accès à cette route en écriture.
-router.put("/", requireAuth, requireAdmin, async (req, res) => {
-  const { properties, payments, expenses } = req.body || {};
-  if (!Array.isArray(properties) || typeof payments !== "object" || !Array.isArray(expenses)) {
-    return res.status(400).json({ error: "Format de données invalide." });
+//
+// Les paiements ne sont PAS remplacés par cette route (sauf import d'une
+// sauvegarde, replacePayments: true) : ils passent par POST /payments, entrée
+// par entrée. Sinon un admin dont la page a été chargée avant qu'un employé
+// n'enregistre un paiement effacerait ce paiement à sa prochaine sauvegarde.
+router.put("/", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { properties, payments, expenses, replacePayments } = req.body || {};
+    if (!Array.isArray(properties) || !Array.isArray(expenses) || (replacePayments && (typeof payments !== "object" || payments === null))) {
+      return res.status(400).json({ error: "Format de données invalide." });
+    }
+    if (replacePayments) {
+      await pool.query(
+        "UPDATE portfolio SET data = $1, updated_at = now() WHERE id = 1",
+        [JSON.stringify({ properties, payments, expenses })]
+      );
+    } else {
+      await pool.query(
+        `UPDATE portfolio
+            SET data = jsonb_build_object(
+                  'properties', $1::jsonb,
+                  'expenses', $2::jsonb,
+                  'payments', COALESCE(data->'payments', '{}'::jsonb)
+                ),
+                updated_at = now()
+          WHERE id = 1`,
+        [JSON.stringify(properties), JSON.stringify(expenses)]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
   }
-  const data = { properties, payments, expenses };
-  await pool.query(
-    "UPDATE portfolio SET data = $1, updated_at = now() WHERE id = 1",
-    [JSON.stringify(data)]
-  );
-  res.json({ ok: true });
+});
+
+// Enregistrement des paiements de loyer, ouvert à tout compte ayant accès au
+// module Loyers (admins et employés) — c'est ce qu'utilisent les employés pour
+// déclarer qu'un locataire a payé. Corps : { entries: [{ unitId, period, paid, amount }] }.
+// Chaque entrée est écrite individuellement dans le JSON (jsonb_set), sans
+// toucher au reste du portefeuille. Un employé peut annuler un paiement qu'il
+// a lui-même enregistré, pas celui d'un autre ; un admin peut tout modifier.
+const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+router.post("/payments", requireAuth, async (req, res, next) => {
+  try {
+    if (!(await hasLoyersAccess(req.user))) {
+      return res.status(403).json({ error: "Accès au module Loyers non autorisé." });
+    }
+    const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+    if (entries.length === 0 || entries.length > 500) {
+      return res.status(400).json({ error: "Aucun paiement à enregistrer." });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows } = await client.query("SELECT data FROM portfolio WHERE id = 1 FOR UPDATE");
+      const data = rows[0]?.data || {};
+      const unitIds = new Set((data.properties || []).flatMap((p) => (p.units || []).map((u) => u.id)));
+      const current = data.payments || {};
+      const isAdmin = req.user.role === "admin";
+      const today = new Date().toISOString().slice(0, 10);
+      const result = {};
+
+      for (const e of entries) {
+        if (!e || !unitIds.has(e.unitId) || !PERIOD_RE.test(e.period || "")) {
+          throw Object.assign(new Error("Local ou mois invalide."), { status: 400 });
+        }
+        const key = `${e.unitId}|${e.period}`;
+        if (e.paid) {
+          const entry = {
+            paid: true,
+            amount: Number(e.amount) || 0,
+            datePaid: today,
+            markedBy: req.user.name,
+            markedById: req.user.id,
+          };
+          await client.query(
+            `UPDATE portfolio
+                SET data = jsonb_set(
+                      CASE WHEN data ? 'payments' THEN data ELSE data || '{"payments": {}}'::jsonb END,
+                      ARRAY['payments', $1::text], $2::jsonb, true),
+                    updated_at = now()
+              WHERE id = 1`,
+            [key, JSON.stringify(entry)]
+          );
+          result[key] = entry;
+        } else {
+          const existing = current[key];
+          if (existing && !isAdmin && existing.markedById !== req.user.id) {
+            throw Object.assign(new Error("Seul un administrateur peut annuler un paiement enregistré par quelqu'un d'autre."), { status: 403 });
+          }
+          await client.query(
+            "UPDATE portfolio SET data = data #- ARRAY['payments', $1::text], updated_at = now() WHERE id = 1",
+            [key]
+          );
+          result[key] = null;
+        }
+      }
+      await client.query("COMMIT");
+      res.json({ payments: result });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;
