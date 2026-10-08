@@ -3,9 +3,11 @@ const jwt = require("jsonwebtoken");
 const COOKIE_NAME = "session";
 const SECRET = process.env.JWT_SECRET;
 
-if (!SECRET) {
+// Une clé courte se devine hors ligne à partir d'un seul cookie de session,
+// ce qui permettrait de fabriquer une session admin : 32 caractères minimum.
+if (!SECRET || SECRET.length < 32) {
   console.error(
-    "ERREUR: la variable d'environnement JWT_SECRET n'est pas définie. " +
+    "ERREUR: la variable d'environnement JWT_SECRET manque ou est trop courte (32 caractères minimum). " +
       "Choisis une longue chaîne aléatoire secrète et mets-la dans JWT_SECRET."
   );
   process.exit(1);
