@@ -757,11 +757,13 @@ function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddP
           <div style={styles.emptyStateSub}>Créez un immeuble, un magasin ou un mall. Vous ajouterez ensuite ses locaux un par un, à l'intérieur.</div>
         </div>
       ) : (
+        <>
+        <PortfolioSummary properties={properties} payments={payments} curPeriod={curPeriod} />
         <div className="building-grid" style={styles.buildingGrid}>
           {properties.map((p) => {
             const Icon = TYPES[p.type]?.icon || Store;
             const units = p.units || [];
-            const occupied = units.filter((u) => u.tenant && u.tenant.trim()).length;
+            const st = buildingStats(p, payments, curPeriod);
             return (
               <div key={p.id} className="card-interactive" style={styles.buildingCard} onClick={() => setSelectedPropertyId(p.id)}>
                 <div style={styles.buildingCardTop}>
@@ -777,16 +779,93 @@ function Biens({ properties, selectedPropertyId, setSelectedPropertyId, openAddP
                 <div style={styles.buildingMeta}>
                   {TYPES[p.type]?.label}{p.city ? ` · ${p.city}` : ""}
                 </div>
-                <div style={styles.buildingStock}>
-                  <span>{units.length} local(aux)</span>
-                  <span style={styles.buildingDot}>·</span>
-                  <span>{occupied} occupé(s)</span>
-                </div>
+                {units.length === 0 ? (
+                  <div style={styles.buildingStock}><span>Aucun local enregistré</span></div>
+                ) : (
+                  <>
+                    <div style={styles.buildingMoney}>
+                      <div>
+                        <div style={styles.buildingMoneyLabel}>Encaissé · {MOIS[Number(curPeriod.slice(5)) - 1]}</div>
+                        <div style={{ ...styles.buildingMoneyValue, color: "var(--good)" }}>{fmt(st.collected)}</div>
+                      </div>
+                      <div>
+                        <div style={styles.buildingMoneyLabel}>Impayé</div>
+                        <div style={{ ...styles.buildingMoneyValue, color: st.unpaid > 0 ? "var(--bad)" : "var(--text-dim)" }}>{fmt(st.unpaid)}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={styles.buildingOccRow}>
+                        <span><strong style={{ color: "var(--text)" }}>{st.occupied}</strong> loué{st.occupied > 1 ? "s" : ""} · <strong style={{ color: st.vacant ? "var(--bad)" : "var(--text)" }}>{st.vacant}</strong> vacant{st.vacant > 1 ? "s" : ""}</span>
+                        <span style={{ fontWeight: 600, color: "var(--text)" }}>{st.rate}%</span>
+                      </div>
+                      <div style={{ display: "flex" }}>
+                        <div style={styles.progressTrack}><div style={styles.progressFill(st.rate, "var(--good)")} /></div>
+                      </div>
+                    </div>
+                    <div style={styles.buildingStock}>
+                      <span>Encaissé depuis janvier</span>
+                      <span style={{ marginLeft: "auto", fontWeight: 600, color: "var(--text)" }}>{fmt(st.collectedYtd)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}
         </div>
+        </>
       )}
+    </div>
+  );
+}
+
+// Chiffres d'un immeuble pour le mois en cours : loyers encaissés / impayés
+// (loyer dû du mois, donc % du CA inclus pour les loyers variables), locaux
+// loués / vacants, taux de remplissage, et encaissé cumulé depuis janvier.
+function buildingStats(property, payments, curPeriod) {
+  const units = property.units || [];
+  const occupiedUnits = units.filter((u) => u.tenant && u.tenant.trim());
+  let collected = 0, unpaid = 0, collectedYtd = 0;
+  const [year, month] = curPeriod.split("-").map(Number);
+  occupiedUnits.forEach((u) => {
+    const due = rentDue(u, curPeriod);
+    if (payments?.[`${u.id}|${curPeriod}`]?.paid) collected += due; else unpaid += due;
+    for (let m = 0; m < month; m++) {
+      const period = periodKey(year, m);
+      if (payments?.[`${u.id}|${period}`]?.paid) collectedYtd += rentDue(u, period);
+    }
+  });
+  const occupied = occupiedUnits.length;
+  return {
+    collected,
+    unpaid,
+    collectedYtd,
+    occupied,
+    vacant: units.length - occupied,
+    rate: units.length ? Math.round((occupied / units.length) * 100) : 0,
+  };
+}
+
+function PortfolioSummary({ properties, payments, curPeriod }) {
+  const t = properties.reduce((acc, p) => {
+    const st = buildingStats(p, payments, curPeriod);
+    acc.collected += st.collected; acc.unpaid += st.unpaid; acc.occupied += st.occupied; acc.vacant += st.vacant;
+    return acc;
+  }, { collected: 0, unpaid: 0, occupied: 0, vacant: 0 });
+  const total = t.occupied + t.vacant;
+  const items = [
+    { label: `Encaissé · ${MOIS[Number(curPeriod.slice(5)) - 1]}`, value: fmt(t.collected), color: "var(--good)" },
+    { label: "Impayé", value: fmt(t.unpaid), color: t.unpaid > 0 ? "var(--bad)" : "var(--text)" },
+    { label: "Loués / vacants", value: `${t.occupied} / ${t.vacant}` },
+    { label: "Remplissage", value: `${total ? Math.round((t.occupied / total) * 100) : 0}%` },
+  ];
+  return (
+    <div className="kpi-grid" style={{ ...styles.kpiGrid, marginBottom: 18 }}>
+      {items.map((it) => (
+        <div key={it.label} style={{ ...styles.kpiCard, padding: "14px 16px" }}>
+          <div style={styles.kpiLabel}>{it.label}</div>
+          <div className="kpi-value" style={{ ...styles.kpiValue, fontSize: 21, color: it.color || "var(--text)" }}>{it.value}</div>
+        </div>
+      ))}
     </div>
   );
 }

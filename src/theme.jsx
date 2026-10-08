@@ -186,11 +186,12 @@ a { color: var(--accent); }
   .subnav { padding: 12px 16px 0 !important; flex-direction: column-reverse !important; align-items: stretch !important; gap: 4px !important; }
   .subnav [role="tablist"], [role="tablist"] { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
   [role="tablist"]::-webkit-scrollbar { display: none; }
+  .subnav > *, [role="tablist"] { min-width: 0; max-width: 100%; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
   .kpi-grid > div { padding: 14px !important; }
   .kpi-value { font-size: 19px !important; white-space: normal !important; }
   .two-col { grid-template-columns: 1fr !important; }
-  .building-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; }
+  .building-grid { grid-template-columns: 1fr !important; }
 }
 `;
 
@@ -271,7 +272,7 @@ export const styles = {
   emptyStateTitle: { fontFamily: "var(--font-display)", fontSize: 15.5, fontWeight: 600, marginTop: 8 },
   emptyStateSub: { fontSize: 13, color: "var(--text-dim)", maxWidth: 380, lineHeight: 1.55 },
 
-  buildingGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 },
+  buildingGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 },
   buildingCard: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: 18, cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, boxShadow: "var(--shadow-sm)" },
   buildingCardTop: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 },
   buildingIconWrap: { width: 40, height: 40, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
@@ -280,6 +281,10 @@ export const styles = {
   buildingMeta: { fontSize: 12.5, color: "var(--text-dim)" },
   buildingStock: { fontSize: 12, color: "var(--text-dim)", display: "flex", gap: 6, marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" },
   buildingDot: { color: "var(--text-faint)" },
+  buildingMoney: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, padding: "12px 0", borderTop: "1px solid var(--border)" },
+  buildingMoneyLabel: { fontSize: 11.5, color: "var(--text-dim)", marginBottom: 3 },
+  buildingMoneyValue: { fontSize: 15.5, fontWeight: 600, letterSpacing: "-0.01em", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" },
+  buildingOccRow: { display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, color: "var(--text-dim)", marginBottom: 7, fontVariantNumeric: "tabular-nums" },
   buildingDetailHead: { display: "flex", gap: 14, alignItems: "flex-start" },
   buildingAddress: { fontSize: 13, color: "var(--text-dim)", marginTop: 4 },
   yieldBadge: { display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 500, color: "var(--good)", background: "var(--good-soft)", padding: "3px 9px", borderRadius: 999 },
