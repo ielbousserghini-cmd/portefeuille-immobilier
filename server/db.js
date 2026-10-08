@@ -163,6 +163,16 @@ async function migrate() {
     );
   `);
 
+  // Stockage privé Cloudinary : la base garde l'identifiant du fichier plutôt
+  // que son URL publique (url reste remplie pour les anciens documents).
+  await pool.query(`
+    ALTER TABLE documents ALTER COLUMN url DROP NOT NULL;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS public_id TEXT;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS resource_type TEXT;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS format TEXT;
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS delivery_type TEXT;
+  `);
+
   // Donne à un utilisateur "employe" (rôle global côté Loyers) un accès et un
   // rôle au sein du module Chantiers. Un admin global (users.role = 'admin')
   // a toujours un accès admin complet aux deux modules et n'a jamais besoin

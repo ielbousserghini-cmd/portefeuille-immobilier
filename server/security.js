@@ -55,7 +55,12 @@ function securityHeaders({ distDir }) {
     // (pas pour les scripts).
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://res.cloudinary.com",
+    // Photos de chantier : /api/documents/:id/fichier redirige vers une URL
+    // de téléchargement signée sur api.cloudinary.com (fichiers privés) ;
+    // res.cloudinary.com reste autorisé pour les anciens fichiers publics
+    // tant que scripts/migrer-cloudinary-prive.js n'a pas été lancé.
+    "img-src 'self' data: blob: https://api.cloudinary.com https://res.cloudinary.com",
+    // Envoi signé navigateur -> Cloudinary (signature délivrée par le serveur).
     "connect-src 'self' https://api.cloudinary.com",
     "worker-src 'self'",
     "manifest-src 'self'",

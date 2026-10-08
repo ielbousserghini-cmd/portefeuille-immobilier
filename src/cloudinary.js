@@ -1,24 +1,36 @@
-// Envoie un fichier directement depuis le navigateur vers Cloudinary (aucun
-// mot de passe secret n'est nécessaire côté client : seul un "upload preset"
-// non signé, prévu pour ça, est utilisé). Le serveur ne reçoit que l'URL
-// obtenue en retour, jamais le fichier lui-même.
-export async function uploadToCloudinary(file) {
-  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-  const preset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-  if (!cloudName || !preset) {
-    throw new Error("Le stockage des fichiers n'est pas configuré (variables VITE_CLOUDINARY_* manquantes).");
-  }
+import { api } from "./api";
+
+// Envoie un fichier de chantier directement depuis le navigateur vers
+// Cloudinary, avec une signature délivrée par le serveur (qui vérifie d'abord
+// l'accès au chantier). Le fichier est stocké en accès privé (« authenticated ») :
+// il ne se lit ensuite que via /api/documents/:id/fichier.
+// Renvoie la réponse de Cloudinary à transmettre telle quelle à api.addDocument.
+export async function uploadToCloudinary(file, { chantierId, lotId }) {
+  const { upload } = await api.signDocumentUpload(chantierId, lotId);
   const form = new FormData();
   form.append("file", file);
-  form.append("upload_preset", preset);
+  form.append("api_key", upload.apiKey);
+  form.append("timestamp", String(upload.timestamp));
+  form.append("public_id", upload.public_id);
+  form.append("type", upload.type);
+  form.append("signature", upload.signature);
 
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`, {
-    method: "POST",
-    body: form,
-  });
-  const data = await res.json();
-  if (!res.ok) {
+  const res = await fetch(upload.uploadUrl, { method: "POST", body: form });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // réponse illisible : message générique ci-dessous
+  }
+  if (!res.ok || !data) {
     throw new Error(data?.error?.message || "Échec de l'envoi du fichier.");
   }
-  return data.secure_url;
+  return {
+    public_id: data.public_id,
+    version: data.version,
+    signature: data.signature,
+    resource_type: data.resource_type,
+    format: data.format,
+    type: data.type,
+  };
 }

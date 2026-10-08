@@ -797,9 +797,9 @@ function DocumentsTab({ chantierId, lots, currentUser, canWrite, flashError }) {
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadToCloudinary(file);
+      const uploaded = await uploadToCloudinary(file, { chantierId, lotId: lotId || null });
       const type = file.type.startsWith("image/") ? "photo" : "document";
-      await api.addDocument({ chantierId, lotId: lotId || null, type, url, caption: file.name });
+      await api.addDocument({ chantierId, lotId: lotId || null, type, cloudinary: uploaded, caption: file.name });
       load();
     } catch (err) {
       flashError(err.message);
@@ -844,9 +844,9 @@ function DocumentsTab({ chantierId, lots, currentUser, canWrite, flashError }) {
           {docs.map((d) => (
             <div key={d.id} style={styles.photoCard}>
               {d.type === "photo" ? (
-                <a href={d.url} target="_blank" rel="noreferrer"><img src={d.url} alt={d.caption} style={styles.photoImg} /></a>
+                <a href={d.file_url} target="_blank" rel="noreferrer"><img src={d.file_url} alt={d.caption} style={styles.photoImg} /></a>
               ) : (
-                <a href={d.url} target="_blank" rel="noreferrer" style={{ ...styles.photoImg, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
+                <a href={d.file_url} target="_blank" rel="noreferrer" style={{ ...styles.photoImg, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
                   Document
                 </a>
               )}

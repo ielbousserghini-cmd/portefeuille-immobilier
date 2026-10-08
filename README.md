@@ -156,14 +156,18 @@ compte Cloudinary et ajouter deux nouvelles variables d'environnement au
 service Render **existant** (Dashboard Render → ton service → Environment) :
 
 1. Va sur https://cloudinary.com et crée un compte gratuit.
-2. Une fois connecté, note ton **Cloud name** (visible en haut du tableau de
-   bord) → variable `VITE_CLOUDINARY_CLOUD_NAME`.
-3. Va dans **Settings** (roue crantée) → **Upload** → section **Upload
-   presets** → **Add upload preset**.
-4. Mets **Signing Mode** sur **Unsigned** (essentiel : c'est ce qui permet au
-   navigateur d'envoyer un fichier sans mot de passe secret). Donne-lui un nom
-   simple (ex. `chantiers`), enregistre → variable `VITE_CLOUDINARY_UPLOAD_PRESET`.
-5. Ajoute ces deux variables au service Render existant, puis redéploie
+2. Note ton **Cloud name** (en haut du tableau de bord) → variable
+   `CLOUDINARY_CLOUD_NAME`.
+3. Va dans **Settings** → **API Keys** : copie l'**API Key** → variable
+   `CLOUDINARY_API_KEY`, et l'**API Secret** → variable `CLOUDINARY_API_SECRET`
+   (secret : seulement dans Render, jamais dans le code ni une variable `VITE_`).
+4. Les fichiers sont envoyés avec une signature du serveur et stockés en accès
+   privé : aucun « upload preset » non signé n'est nécessaire. S'il en existe
+   un (ancienne version), supprime-le dans **Settings → Upload → Upload presets**
+   ainsi que les variables `VITE_CLOUDINARY_*` sur Render. Les anciens fichiers
+   publics se passent en privé avec `node scripts/migrer-cloudinary-prive.js`
+   (simulation) puis `--appliquer`.
+5. Ajoute ces trois variables au service Render existant, puis redéploie
    (un simple `git push` déclenche déjà un redéploiement si l'auto-deploy est
    actif). Toutes les autres variables (`DATABASE_URL`, `JWT_SECRET`,
    `ADMIN_USERNAME`, etc.), l'URL du service et les comptes existants restent

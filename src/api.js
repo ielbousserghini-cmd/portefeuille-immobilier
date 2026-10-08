@@ -98,6 +98,7 @@ export const api = {
   deletePlanningTask: (taskId) => request("DELETE", `/api/planning/${taskId}`),
 
   listDocuments: (chantierId) => request("GET", `/api/chantiers/${chantierId}/documents`),
+  signDocumentUpload: (chantierId, lotId) => request("POST", `/api/chantiers/${chantierId}/documents/signature`, { lotId: lotId || null }),
   addDocument: (data) => request("POST", "/api/documents", data),
   deleteDocument: (docId) => request("DELETE", `/api/documents/${docId}`),
 
