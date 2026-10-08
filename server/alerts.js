@@ -152,7 +152,18 @@ async function checkAndSendAlerts(pool) {
     });
 
     let emailSent = false;
-    if (smtpConfigured()) {
+    const { emailConfigured, sendEmail } = require("./email");
+    const { getSettings } = require("./agents/report-mail");
+    const recipients = emailConfigured() ? (await getSettings()).recipients : [];
+    if (recipients.length) {
+      await sendEmail({
+        to: recipients,
+        subject: `Portefeuille immobilier — ${unseen.length} alerte(s) bail/loyer`,
+        html: `<p>Nouvelles alertes sur l'extranet :</p><ul>${unseen.map((a) => `<li>${a.message.replace(/</g, "&lt;")}</li>`).join("")}</ul>`,
+        text: unseen.map((a) => `- ${a.message}`).join("\n"),
+      });
+      emailSent = true;
+    } else if (smtpConfigured()) {
       await sendAlertEmail(unseen);
       emailSent = true;
     }

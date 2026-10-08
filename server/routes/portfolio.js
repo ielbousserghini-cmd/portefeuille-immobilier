@@ -3,6 +3,7 @@ const { pool } = require("../db");
 const { requireAuth, requireAdmin } = require("../auth");
 const { hasLoyersAccess } = require("../access");
 const { notify } = require("../push");
+const { recordChange } = require("../agents/report-mail");
 
 const router = express.Router();
 
@@ -64,7 +65,9 @@ router.put("/", requireAuth, requireAdmin, async (req, res, next) => {
         "UPDATE portfolio SET data = $1, updated_at = now() WHERE id = 1",
         [JSON.stringify({ properties, payments, expenses })]
       );
+      recordChange(`${req.user.name} a importé une sauvegarde complète.`);
     } else {
+      recordChange(`${req.user.name} a modifié les biens, locaux ou charges.`);
       await pool.query(
         `UPDATE portfolio
             SET data = jsonb_build_object(
@@ -150,6 +153,7 @@ router.post("/payments", requireAuth, async (req, res, next) => {
       await client.query("COMMIT");
       res.json({ payments: result });
       notifyPayments(req.user, data, entries.filter((e) => e.paid));
+      for (const e of entries.filter((x) => !x.paid)) recordChange(`${req.user.name} a annulé un paiement (${e.period}).`);
     } catch (err) {
       await client.query("ROLLBACK");
       if (err.status) return res.status(err.status).json({ error: err.message });
@@ -175,6 +179,10 @@ function notifyPayments(user, data, paidEntries) {
   const body = paidEntries.length === 1 && first
     ? `${who} a encaissé ${fmt(total)} — ${first.tenant}, ${first.name} (${first.propertyName})`
     : `${who} a encaissé ${paidEntries.length} loyers · ${fmt(total)}${first ? ` (${first.tenant}…)` : ""}`;
+  for (const e of paidEntries) {
+    const u = units.get(e.unitId);
+    recordChange(`${user.name} a encaissé ${fmt(Number(e.amount) || 0)} — ${u ? `${u.tenant}, ${u.name} (${u.propertyName})` : "local inconnu"}, ${e.period}.`);
+  }
   notify({ pref: "payments", excludeUserId: user.id, payload: { title: "Loyer encaissé", body, url: "/?section=loyers&tab=encaisser", tag: `pay-${Date.now()}` } })
     .catch(() => {});
 }

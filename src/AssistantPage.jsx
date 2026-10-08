@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Sparkles, Wallet, AlertTriangle, CalendarClock, Percent, MessageCircle, Copy, Check, ChevronRight,
-  Bell, BellOff, Smartphone, Share, PlusSquare, FileDown, Play, ClipboardCheck, Phone, DoorOpen, TrendingUp, Download,
+  Bell, BellOff, Smartphone, Share, PlusSquare, FileDown, Play, ClipboardCheck, Phone, DoorOpen, TrendingUp, Download, Mail, X, Send,
 } from "lucide-react";
 import { api } from "./api";
 import { styles } from "./theme.jsx";
@@ -264,6 +264,7 @@ export default function AssistantPage({ currentUser, onNavigate }) {
         <PhoneCard />
         <ReportsCard />
       </div>
+      <EmailCard />
 
       <div style={{ ...styles.emptyNote, textAlign: "center", marginTop: 8 }}>
         {data.lastRun
@@ -302,6 +303,87 @@ function DqRow({ icon: Icon, done, label, meta }) {
         {meta && <div style={s.rowMeta}>{meta}</div>}
       </div>
     </div>
+  );
+}
+
+// Emails de rapport : destinataires, rapport quotidien, mises à jour.
+function EmailCard() {
+  const [state, setState] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.emailSettings().then(setState).catch((err) => setMsg(err.message));
+  }, []);
+
+  async function save(next) {
+    setMsg(null);
+    try {
+      const { settings } = await api.saveEmailSettings(next);
+      setState((cur) => ({ ...cur, settings }));
+      return true;
+    } catch (err) {
+      setMsg(err.message);
+      return false;
+    }
+  }
+  async function addRecipient(e) {
+    e.preventDefault();
+    const email = draft.trim();
+    if (!email) return;
+    if (await save({ ...state.settings, recipients: [...state.settings.recipients, email] })) setDraft("");
+  }
+  async function sendNow() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.sendEmailReport();
+      setMsg(`Rapport envoyé à ${r.recipients} adresse(s). Il arrive en général en moins d'une minute.`);
+    } catch (err) {
+      setMsg(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!state) return null;
+  const st = state.settings;
+  return (
+    <AgentCard icon={Mail} tone="warn" name="Emails de rapport" desc="Chaque matin à 8 h et après chaque série de changements : résumé, rapport PDF, classeur Excel et sauvegarde complète en pièces jointes.">
+      {!state.configured && (
+        <div style={s.hint}>
+          L'envoi d'emails n'est pas encore activé sur le serveur. Il faut un compte Brevo gratuit et deux réglages sur Render (<strong>BREVO_API_KEY</strong> et <strong>EMAIL_FROM</strong>). Tu peux déjà choisir les destinataires ci-dessous.
+        </div>
+      )}
+      <form onSubmit={addRecipient} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <input type="email" style={{ ...styles.input, flex: "1 1 220px", width: "auto" }} placeholder="adresse@exemple.com" value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="Adresse email à ajouter" />
+        <button type="submit" style={styles.secondaryBtn}>Ajouter</button>
+      </form>
+      {st.recipients.length === 0 ? (
+        <div style={styles.emptyNote}>Aucun destinataire pour l'instant.</div>
+      ) : (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+          {st.recipients.map((r) => (
+            <span key={r} style={{ ...styles.badge("neutral"), fontSize: 12.5, padding: "4px 6px 4px 10px" }}>
+              {r}
+              <button type="button" onClick={() => save({ ...st, recipients: st.recipients.filter((x) => x !== r) })} aria-label={`Retirer ${r}`} title="Retirer"
+                style={{ border: "none", background: "transparent", color: "var(--text-dim)", cursor: "pointer", padding: 2, display: "inline-flex" }}>
+                <X size={13} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={s.toggleRow}><span>Rapport quotidien (8 h)</span><Toggle on={st.daily} onChange={(v) => save({ ...st, daily: v })} label="Rapport quotidien" /></div>
+      <div style={s.toggleRow}><span>Email après des changements (paiements, biens), regroupés toutes les 10 min</span><Toggle on={st.onChange} onChange={(v) => save({ ...st, onChange: v })} label="Emails de mise à jour" /></div>
+      <div style={{ marginTop: 12 }}>
+        <button type="button" style={styles.secondaryBtn} onClick={sendNow} disabled={busy || !state.configured || !st.recipients.length}>
+          {busy ? <span className="spinner" /> : <Send size={14} />} Envoyer le rapport maintenant
+        </button>
+        {state.configured && state.from && <span style={{ fontSize: 12, color: "var(--text-dim)", marginLeft: 10 }}>Expéditeur : {state.from}</span>}
+      </div>
+      {msg && <div style={{ ...s.hint, marginTop: 12, marginBottom: 0 }}>{msg}</div>}
+    </AgentCard>
   );
 }
 

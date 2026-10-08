@@ -4,6 +4,7 @@ const { requireAuth, requireAdmin } = require("../auth");
 const { computeInsights, briefingNotification } = require("../agents/insights");
 const { buildReportPdf } = require("../agents/report-pdf");
 const { getVapidKeys, saveSubscription, notify } = require("../push");
+const reportMail = require("../agents/report-mail");
 
 const router = express.Router();
 const TZ = "Africa/Casablanca";
@@ -46,9 +47,17 @@ async function runDaily({ force = false } = {}) {
   if (!rowCount) return { ran: false, reason: "Déjà passé aujourd'hui.", day };
   // Rotation : on garde 90 jours de sauvegardes et de rapports.
   await pool.query("DELETE FROM agent_runs WHERE run_date < CURRENT_DATE - INTERVAL '90 days'");
+  // Rapport par email (si Brevo est configuré et des destinataires définis).
+  let email = { sent: false };
+  try {
+    email = await reportMail.sendDailyReport({ pdf });
+  } catch (err) {
+    console.error("[assistant] Échec du rapport par email :", err.message);
+    email = { sent: false, error: err.message };
+  }
   const n = briefingNotification(insights);
   const push = await notify({ pref: "briefing", payload: { ...n, body: `${n.body} · Rapport PDF prêt.`, url: "/?section=assistant", tag: "briefing" } });
-  return { ran: true, day, summary, push };
+  return { ran: true, day, summary, push, email };
 }
 
 // Planificateur interne : tant que le serveur est éveillé, vérifie toutes les
@@ -119,6 +128,38 @@ router.get("/assistant/reports", requireAuth, requireAdmin, async (req, res, nex
     );
     res.json({ reports: rows });
   } catch (err) {
+    next(err);
+  }
+});
+
+// --- Emails de rapport ---
+router.get("/assistant/email-settings", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ configured: reportMail.emailConfigured(), from: process.env.EMAIL_FROM || null, settings: await reportMail.getSettings() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put("/assistant/email-settings", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    res.json({ settings: await reportMail.saveSettings(req.body || {}) });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.post("/assistant/email-send", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const r = await reportMail.sendDailyReport({ force: true });
+    if (!r.sent) {
+      const msg = r.reason === "not-configured" ? "Envoi d'emails non configuré sur le serveur (BREVO_API_KEY, EMAIL_FROM)." : "Ajoute au moins un destinataire.";
+      return res.status(400).json({ error: msg });
+    }
+    res.json(r);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   }
 });
