@@ -2,6 +2,8 @@ require("dotenv").config();
 const path = require("path");
 const express = require("express");
 const cookieParser = require("cookie-parser");
+const { patchAsyncErrors, securityHeaders } = require("./security");
+patchAsyncErrors();
 const { pool, migrate, seedAdmin } = require("./db");
 const { checkAndSendAlerts } = require("./alerts");
 
@@ -15,9 +17,17 @@ const planningRoutes = require("./routes/planning");
 const documentsRoutes = require("./routes/documents");
 const aiImportRoutes = require("./routes/ai-import");
 const alertsRoutes = require("./routes/alerts");
+const assistant = require("./routes/assistant");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const distDir = path.join(__dirname, "..", "dist");
+
+// Render place le serveur derrière un proxy : nécessaire pour connaître la
+// vraie adresse IP des visiteurs (limitation des tentatives de connexion).
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use(securityHeaders({ distDir }));
 
 // Le portefeuille entier (biens, locaux, paiements) transite en un seul JSON
 // lors des sauvegardes et imports : la limite par défaut (100 Ko) est trop basse.
@@ -32,6 +42,7 @@ app.use("/api/users", usersRoutes);
 // (accès Chantiers requis) et masqueraient sinon les routes déclarées après.
 app.use("/api/ai", aiImportRoutes);
 app.use("/api", alertsRoutes);
+app.use("/api", assistant.router);
 app.use("/api/chantiers", chantiersRoutes);
 app.use("/api", avancementRoutes);
 app.use("/api", budgetRoutes);
@@ -39,8 +50,14 @@ app.use("/api", planningRoutes);
 app.use("/api", documentsRoutes);
 
 // Sert le frontend React construit (dossier dist/, généré par `vite build`).
-const distDir = path.join(__dirname, "..", "dist");
-app.use(express.static(distDir));
+// Le service worker et le manifeste de la web app ne doivent jamais être mis
+// en cache par le navigateur, sinon les mises à jour de l'app tardent à
+// arriver sur les téléphones.
+app.use(express.static(distDir, {
+  setHeaders(res, filePath) {
+    if (/(sw\.js|manifest\.webmanifest)$/.test(filePath)) res.setHeader("Cache-Control", "no-cache");
+  },
+}));
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return next();
   res.sendFile(path.join(distDir, "index.html"));
@@ -49,7 +66,10 @@ app.get("*", (req, res, next) => {
 // Filet de sécurité : toute erreur non gérée dans une route devient une
 // réponse JSON propre plutôt qu'un plantage silencieux du serveur.
 app.use((err, req, res, next) => {
+  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Requête invalide." });
+  if (err.type === "entity.too.large") return res.status(413).json({ error: "Données trop volumineuses." });
   console.error(err);
+  if (res.headersSent) return next(err);
   res.status(500).json({ error: "Erreur interne du serveur." });
 });
 
@@ -69,6 +89,7 @@ async function start() {
   });
   setTimeout(() => checkAndSendAlerts(pool), 10000);
   setInterval(() => checkAndSendAlerts(pool), ALERTS_INTERVAL_MS);
+  assistant.startScheduler();
 }
 
 start().catch((err) => {

@@ -1,7 +1,13 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { pool } = require("../db");
-const { requireAuth, requireAdmin } = require("../auth");
+const { requireAuth, requireAdmin, setSessionCookie } = require("../auth");
+
+const MIN_PASSWORD = 8;
+function validId(raw) {
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
 
 const router = express.Router();
 
@@ -20,8 +26,8 @@ router.post("/", async (req, res) => {
   if (!name?.trim() || !username?.trim() || !password || !["admin", "employe"].includes(role)) {
     return res.status(400).json({ error: "Nom, identifiant, mot de passe et rôle (admin/employe) requis." });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Le mot de passe doit contenir au moins 6 caractères." });
+  if (typeof password !== "string" || password.length < MIN_PASSWORD) {
+    return res.status(400).json({ error: `Le mot de passe doit contenir au moins ${MIN_PASSWORD} caractères.` });
   }
 
   const hash = await bcrypt.hash(password, 10);
@@ -42,7 +48,8 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const id = Number(req.params.id);
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant invalide." });
   const { name, role, active, password, loyers_access } = req.body || {};
 
   if (id === req.user.id && (active === false || (role && role !== "admin"))) {
@@ -61,8 +68,9 @@ router.patch("/:id", async (req, res) => {
   // qui n'a jamais accès au module Loyers. Sans effet pour un compte admin
   // (toujours accès complet), utile seulement pour un compte "employe".
   if (typeof loyers_access === "boolean") { fields.push(`loyers_access = $${i++}`); values.push(loyers_access); }
-  if (typeof password === "string" && password) {
-    if (password.length < 6) return res.status(400).json({ error: "Le mot de passe doit contenir au moins 6 caractères." });
+  const passwordChanged = typeof password === "string" && password;
+  if (passwordChanged) {
+    if (password.length < MIN_PASSWORD) return res.status(400).json({ error: `Le mot de passe doit contenir au moins ${MIN_PASSWORD} caractères.` });
     const hash = await bcrypt.hash(password, 10);
     fields.push(`password_hash = $${i++}`);
     values.push(hash);
@@ -70,17 +78,25 @@ router.patch("/:id", async (req, res) => {
 
   if (!fields.length) return res.status(400).json({ error: "Aucune modification fournie." });
 
+  // Mot de passe, rôle ou état actif modifié : les sessions ouvertes de ce
+  // compte sont invalidées (déconnexion de tous ses appareils).
+  if (passwordChanged || role || typeof active === "boolean") fields.push("session_version = session_version + 1");
+
   values.push(id);
   const { rows } = await pool.query(
-    `UPDATE users SET ${fields.join(", ")} WHERE id = $${i} RETURNING id, name, username, role, active, loyers_access, created_at`,
+    `UPDATE users SET ${fields.join(", ")} WHERE id = $${i} RETURNING id, name, username, role, active, loyers_access, created_at, session_version`,
     values
   );
   if (!rows[0]) return res.status(404).json({ error: "Utilisateur introuvable." });
-  res.json({ user: rows[0] });
+  // L'admin qui change son propre mot de passe reste connecté sur cet appareil.
+  if (id === req.user.id) setSessionCookie(res, rows[0]);
+  const { session_version: _sv, ...user } = rows[0];
+  res.json({ user });
 });
 
 router.delete("/:id", async (req, res) => {
-  const id = Number(req.params.id);
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Identifiant invalide." });
   if (id === req.user.id) {
     return res.status(400).json({ error: "Tu ne peux pas supprimer ton propre compte." });
   }

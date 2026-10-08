@@ -34,6 +34,13 @@ router.get("/chantiers/:chantierId/documents", async (req, res) => {
 router.post("/documents", async (req, res) => {
   const { chantierId, lotId, type, url, caption } = req.body || {};
   if (!chantierId || !url) return res.status(400).json({ error: "chantierId et url requis." });
+  // Seules des adresses https sont acceptées : une URL « javascript:… »
+  // enregistrée ici s'exécuterait chez la personne qui clique sur le document.
+  let parsed;
+  try { parsed = new URL(String(url)); } catch { parsed = null; }
+  if (!parsed || parsed.protocol !== "https:" || String(url).length > 2000) {
+    return res.status(400).json({ error: "Adresse de fichier invalide." });
+  }
   if (!(await canAccessChantier(req.user, Number(chantierId)))) {
     return res.status(403).json({ error: "Accès non autorisé à ce chantier." });
   }

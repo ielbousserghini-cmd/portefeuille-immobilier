@@ -1,0 +1,20 @@
+# Mises à jour automatiques : chaque semaine, GitHub propose (sans rien
+# publier tout seul) une mise à jour des bibliothèques, en priorité les
+# correctifs de sécurité. Chaque proposition passe la vérification (ci.yml).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Casablanca
+    open-pull-requests-limit: 5
+    groups:
+      mineures:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

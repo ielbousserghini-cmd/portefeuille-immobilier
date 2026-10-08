@@ -137,21 +137,38 @@ async function checkAndSendAlerts(pool) {
       return { checked: due.length, newAlerts: 0, emailSent: false };
     }
 
-    if (!smtpConfigured()) {
-      console.log(
-        `[alerts] ${unseen.length} nouvelle(s) alerte(s) bail/loyer (email non envoyé — SMTP non configuré) :\n` +
-          unseen.map((a) => `  - ${a.message}`).join("\n")
-      );
-      // Pas de marquage "vu" : tant que l'email n'est pas configuré, on
-      // continuera de les signaler en log à chaque vérification, et l'email
-      // partira automatiquement dès que SMTP sera configuré.
-      return { checked: due.length, newAlerts: unseen.length, emailSent: false };
+    // Notification sur les téléphones abonnés (Assistant → « Sur ton
+    // téléphone »), en plus de l'email si SMTP est configuré. Note : le plan
+    // gratuit de Render bloque l'envoi SMTP ; le push, lui, fonctionne.
+    const { notify } = require("./push");
+    const push = await notify({
+      pref: "alerts",
+      payload: {
+        title: `${unseen.length} alerte(s) bail / loyer`,
+        body: unseen.slice(0, 3).map((a) => a.message).join(" · ") + (unseen.length > 3 ? " …" : ""),
+        url: "/?section=assistant",
+        tag: "alerts",
+      },
+    });
+
+    let emailSent = false;
+    if (smtpConfigured()) {
+      await sendAlertEmail(unseen);
+      emailSent = true;
     }
 
-    await sendAlertEmail(unseen);
+    if (!emailSent && !push.sent) {
+      console.log(
+        `[alerts] ${unseen.length} nouvelle(s) alerte(s) bail/loyer (ni email ni téléphone configuré) :\n` +
+          unseen.map((a) => `  - ${a.message}`).join("\n")
+      );
+      // Pas de marquage "vu" : l'alerte partira dès qu'un canal sera configuré.
+      return { checked: due.length, newAlerts: unseen.length, emailSent: false, pushSent: 0 };
+    }
+
     await markSeen(pool, unseen);
-    console.log(`[alerts] Email envoyé pour ${unseen.length} nouvelle(s) alerte(s).`);
-    return { checked: due.length, newAlerts: unseen.length, emailSent: true };
+    console.log(`[alerts] ${unseen.length} nouvelle(s) alerte(s) envoyée(s) (email : ${emailSent ? "oui" : "non"}, téléphones : ${push.sent}).`);
+    return { checked: due.length, newAlerts: unseen.length, emailSent, pushSent: push.sent };
   } catch (err) {
     console.error("[alerts] Échec de la vérification des alertes :", err);
     return { checked: 0, newAlerts: 0, emailSent: false, error: err.message };

@@ -3,30 +3,42 @@ const bcrypt = require("bcryptjs");
 const { pool } = require("../db");
 const { setSessionCookie, clearSessionCookie, requireAuth } = require("../auth");
 const { getChantierRole, hasLoyersAccess } = require("../access");
+const { loginLimiter } = require("../security");
+
+// Empreinte factice : comparer quand l'identifiant n'existe pas, pour que la
+// réponse prenne le même temps (sinon on peut deviner les identifiants valides).
+const DUMMY_HASH = bcrypt.hashSync("mot-de-passe-factice-pour-temps-constant", 10);
 
 const router = express.Router();
 
 router.post("/login", async (req, res) => {
   const { username, password } = req.body || {};
-  if (!username || !password) {
+  if (typeof username !== "string" || typeof password !== "string" || !username.trim() || !password
+      || username.length > 100 || password.length > 200) {
     return res.status(400).json({ error: "Identifiant et mot de passe requis." });
+  }
+  const login = username.trim();
+  if (loginLimiter.isBlocked(req.ip, login.toLowerCase())) {
+    return res.status(429).json({ error: "Trop de tentatives. Réessaie dans 15 minutes." });
   }
 
   const { rows } = await pool.query(
-    "SELECT id, name, username, password_hash, role, active FROM users WHERE username = $1",
-    [String(username).trim()]
+    "SELECT id, name, username, password_hash, role, active, session_version FROM users WHERE username = $1",
+    [login]
   );
   const user = rows[0];
 
   // Message volontairement identique dans les deux cas (compte inconnu / mauvais
   // mot de passe / compte désactivé) pour ne pas révéler quels identifiants existent.
-  const genericError = () => res.status(401).json({ error: "Identifiant ou mot de passe incorrect." });
+  const genericError = () => {
+    loginLimiter.recordFailure(req.ip, login.toLowerCase());
+    return res.status(401).json({ error: "Identifiant ou mot de passe incorrect." });
+  };
 
-  if (!user || !user.active) return genericError();
+  const ok = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
+  if (!user || !user.active || !ok) return genericError();
 
-  const ok = await bcrypt.compare(password, user.password_hash);
-  if (!ok) return genericError();
-
+  loginLimiter.recordSuccess(login.toLowerCase());
   setSessionCookie(res, user);
   // chantierRole (module Suivi chantiers) et loyersAccess (module Suivi
   // loyers) sont résolus et renvoyés ici en plus du rôle global (role), pour

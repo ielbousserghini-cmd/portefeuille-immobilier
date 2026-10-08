@@ -2,6 +2,7 @@ const express = require("express");
 const { pool } = require("../db");
 const { requireAuth, requireAdmin } = require("../auth");
 const { hasLoyersAccess } = require("../access");
+const { notify } = require("../push");
 
 const router = express.Router();
 
@@ -148,6 +149,7 @@ router.post("/payments", requireAuth, async (req, res, next) => {
       }
       await client.query("COMMIT");
       res.json({ payments: result });
+      notifyPayments(req.user, data, entries.filter((e) => e.paid));
     } catch (err) {
       await client.query("ROLLBACK");
       if (err.status) return res.status(err.status).json({ error: err.message });
@@ -159,5 +161,22 @@ router.post("/payments", requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+// Prévient les admins (sauf l'auteur) sur leur téléphone quand un paiement
+// est enregistré — typiquement par un employé. Ne bloque jamais la réponse.
+function notifyPayments(user, data, paidEntries) {
+  if (!paidEntries.length) return;
+  const units = new Map();
+  for (const p of data.properties || []) for (const u of p.units || []) units.set(u.id, { ...u, propertyName: p.name });
+  const total = paidEntries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const fmt = (n) => new Intl.NumberFormat("fr-MA", { maximumFractionDigits: 0 }).format(n) + " DH";
+  const first = units.get(paidEntries[0].unitId);
+  const who = user.name.split(" ")[0];
+  const body = paidEntries.length === 1 && first
+    ? `${who} a encaissé ${fmt(total)} — ${first.tenant}, ${first.name} (${first.propertyName})`
+    : `${who} a encaissé ${paidEntries.length} loyers · ${fmt(total)}${first ? ` (${first.tenant}…)` : ""}`;
+  notify({ pref: "payments", excludeUserId: user.id, payload: { title: "Loyer encaissé", body, url: "/?section=loyers&tab=encaisser", tag: `pay-${Date.now()}` } })
+    .catch(() => {});
+}
 
 module.exports = router;

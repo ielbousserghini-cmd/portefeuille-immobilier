@@ -159,8 +159,8 @@ export default function Users({ currentUser }) {
 
   async function submitReset(userId) {
     setError(null);
-    if (!resetPassword || resetPassword.length < 6) {
-      setError("Le nouveau mot de passe doit contenir au moins 6 caractères.");
+    if (!resetPassword || resetPassword.length < 8) {
+      setError("Le nouveau mot de passe doit contenir au moins 8 caractères.");
       return;
     }
     try {
@@ -199,7 +199,7 @@ export default function Users({ currentUser }) {
               type="text"
               value={draft.password}
               onChange={(e) => setDraft({ ...draft, password: e.target.value })}
-              placeholder="6 caractères min."
+              placeholder="8 caractères min."
             />
           </label>
           <label style={{ ...styles.field, minWidth: 130 }}>

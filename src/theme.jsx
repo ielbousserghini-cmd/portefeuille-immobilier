@@ -172,18 +172,23 @@ a { color: var(--accent); }
 .spin { animation: spin 1s linear infinite; color: var(--accent); }
 @media (max-width: 760px) {
   .app-shell { flex-direction: column !important; min-height: auto !important; }
-  .sidebar-nav { position: sticky !important; top: 0; z-index: 30; width: 100% !important; height: auto !important; flex-direction: row !important; align-items: center !important;
-    padding: 10px 12px !important; border-right: none !important; border-bottom: 1px solid var(--border) !important;
-    gap: 10px !important; overflow-x: auto; }
-  .brand-block { flex-shrink: 0; padding: 0 !important; }
-  .brand-block .brand-text, .nav-section-label, .account-info { display: none !important; }
-  .nav-list { flex-direction: row !important; gap: 4px !important; }
-  .nav-group { flex-direction: row !important; gap: 4px !important; }
+  /* Téléphone : barre d'onglets en bas, comme une app iPhone. */
+  .sidebar-nav { position: fixed !important; top: auto !important; bottom: 0; left: 0; right: 0; z-index: 40; width: 100% !important; height: auto !important;
+    flex-direction: row !important; align-items: center !important; justify-content: space-around; gap: 0 !important;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)) !important; border-right: none !important; border-top: 1px solid var(--border) !important;
+    background: color-mix(in srgb, var(--sidebar) 88%, transparent) !important; backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); }
+  .brand-block, .nav-section-label, .account-info, .account-avatar { display: none !important; }
+  .nav-list { flex-direction: row !important; gap: 2px !important; }
+  .nav-group { display: contents !important; }
+  .as-side { width: 100%; justify-content: space-between; margin-left: 0 !important; }
+  .nav-list { flex: 1; justify-content: space-around; }
   .nav-list button span { display: none; }
-  .nav-list button { padding: 9px !important; }
-  .account-block { flex-direction: row !important; margin-top: 0 !important; margin-left: auto; border-top: none !important; padding: 0 !important; background: transparent !important; border: none !important; box-shadow: none !important; }
-  .account-avatar { display: none !important; }
+  .nav-list button { padding: 10px 14px !important; box-shadow: none !important; width: auto !important; flex: 0 0 auto; }
+  .nav-item.is-active { background: var(--accent-soft) !important; }
+  .account-block { flex-direction: row !important; margin: 0 !important; padding: 0 !important; gap: 0 !important; background: transparent !important; border: none !important; box-shadow: none !important; }
+  .app-shell { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .topbar { display: none !important; }
+  [role="alert"][style*="position: fixed"], [role="status"][style*="position: fixed"] { left: 12px !important; right: 12px !important; bottom: calc(76px + env(safe-area-inset-bottom)) !important; max-width: none !important; }
   .backup-block { flex-direction: row !important; margin-top: 0 !important; border-top: none !important; padding-top: 0 !important; margin-left: auto; }
   .backup-block span { display: none; }
   .backup-block button, .backup-block label { padding: 9px !important; }
@@ -202,6 +207,19 @@ a { color: var(--accent); }
   .pay-action { min-width: 0 !important; width: 100%; justify-content: stretch !important; }
   .pay-action > button { flex: 1; }
   .building-grid { grid-template-columns: 1fr !important; }
+  /* Tableaux : défilement horizontal plutôt que des colonnes écrasées. */
+  .page table:not(.ledger-table) { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+  .page table:not(.ledger-table) th, .page table:not(.ledger-table) td { white-space: nowrap; }
+  .subnav > div:last-child { flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; }
+  .subnav button, .subnav label { white-space: nowrap; flex-shrink: 0; }
+  .hide-mobile { display: none !important; }
+  .page td > div { flex-wrap: nowrap !important; }
+  .page button[style*="nowrap"] { white-space: normal !important; max-width: 100%; text-align: left; }
+  /* Grille des loyers : colonne des noms étroite, les mois défilent à côté. */
+  .ledger-table { min-width: 0 !important; width: auto !important; }
+  .ledger-table thead th:first-child, .ledger-table tbody tr:not(.ledger-group) td:first-child { width: 142px !important; min-width: 142px !important; max-width: 142px !important; padding-right: 8px !important; }
+  .ledger-table tbody tr:not(.ledger-group) td:first-child div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ledger-table thead th:not(:first-child), .ledger-table td:not(:first-child) { min-width: 36px; }
 }
 `;
 

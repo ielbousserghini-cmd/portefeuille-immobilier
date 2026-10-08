@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
-import { Building2, Wallet, HardHat, Users as UsersIcon, LogOut, Moon, Sun, ChevronRight } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { Building2, Wallet, HardHat, Users as UsersIcon, LogOut, Moon, Sun, ChevronRight, Sparkles } from "lucide-react";
 import { fontImport, styles, initials, useTheme } from "./theme.jsx";
 import LoyersModule from "./LoyersModule.jsx";
 import ChantiersModule from "./ChantiersModule.jsx";
 import UsersPage from "./Users.jsx";
+import AssistantPage from "./AssistantPage.jsx";
 
 // Point d'entrée unique de l'extranet : une seule Sidebar, un seul bouton de
 // déconnexion, un seul bloc compte — partagés par les deux modules ("Suivi
@@ -19,6 +20,7 @@ import UsersPage from "./Users.jsx";
 // Loyers), et dans ce cas la section correspondante n'apparaît simplement pas
 // dans la Sidebar (pas d'état "accès refusé" affiché).
 const SECTION_LABELS = {
+  assistant: "Assistant",
   loyers: "Suivi loyers",
   chantiers: "Suivi chantiers",
   utilisateurs: "Utilisateurs",
@@ -33,21 +35,58 @@ export default function ExtranetShell({ currentUser, onLogout }) {
   // Démarre sur le premier module auquel ce compte a effectivement accès,
   // pour ne jamais atterrir sur un écran vide si, par ex., un chef de
   // chantier sans accès Loyers se connecte.
+  const canSee = useCallback((id) => (
+    (id === "assistant" && isLoyersAdmin) ||
+    (id === "loyers" && hasLoyersAccess) ||
+    (id === "chantiers" && hasChantiersAccess) ||
+    (id === "utilisateurs" && isLoyersAdmin)
+  ), [isLoyersAdmin, hasLoyersAccess, hasChantiersAccess]);
+
   const defaultSection = useMemo(() => {
+    // Un admin arrive sur l'Assistant (son briefing du jour).
+    if (isLoyersAdmin) return "assistant";
     if (hasLoyersAccess) return "loyers";
     if (hasChantiersAccess) return "chantiers";
     if (isLoyersAdmin) return "utilisateurs";
     return "loyers";
   }, [hasLoyersAccess, hasChantiersAccess, isLoyersAdmin]);
 
-  const [section, setSection] = useState(defaultSection);
+  // Lien direct (?section=…&tab=…), utilisé par les notifications push.
+  const fromUrl = useMemo(() => {
+    const q = new URLSearchParams(window.location.search);
+    return { section: q.get("section"), tab: q.get("tab"), query: q.get("q") };
+  }, []);
+  const [section, setSection] = useState(() => (fromUrl.section && canSee(fromUrl.section) ? fromUrl.section : defaultSection));
+  // Intention transmise au module Loyers (onglet + recherche pré-remplie) ;
+  // intentKey force un nouveau montage pour l'appliquer.
+  const [loyersIntent, setLoyersIntent] = useState(() => (fromUrl.tab ? { tab: fromUrl.tab, query: fromUrl.query || "" } : null));
+  const [intentKey, setIntentKey] = useState(0);
+
+  const navigate = useCallback((target, intent = null) => {
+    if (!canSee(target)) return;
+    setSection(target);
+    if (target === "loyers") { setLoyersIntent(intent); setIntentKey((k) => k + 1); }
+    window.scrollTo(0, 0);
+  }, [canSee]);
+
+  useEffect(() => {
+    if (fromUrl.section) window.history.replaceState(null, "", window.location.pathname);
+    // Toucher une notification alors que l'app est déjà ouverte.
+    function onMessage(e) {
+      if (e.data?.type !== "open-url") return;
+      const q = new URL(e.data.url).searchParams;
+      navigate(q.get("section") || defaultSection, q.get("tab") ? { tab: q.get("tab"), query: q.get("q") || "" } : null);
+    }
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
+  }, [fromUrl, navigate, defaultSection]);
 
   return (
     <div className="app-shell" style={styles.app}>
       <style>{fontImport}</style>
       <Sidebar
         section={section}
-        setSection={setSection}
+        setSection={(id) => navigate(id)}
         currentUser={currentUser}
         isLoyersAdmin={isLoyersAdmin}
         hasLoyersAccess={hasLoyersAccess}
@@ -58,7 +97,8 @@ export default function ExtranetShell({ currentUser, onLogout }) {
       />
       <main className="main-content" style={styles.main}>
         <Topbar section={section} />
-        {section === "loyers" && hasLoyersAccess && <LoyersModule currentUser={currentUser} />}
+        {section === "assistant" && isLoyersAdmin && <AssistantPage currentUser={currentUser} onNavigate={navigate} />}
+        {section === "loyers" && hasLoyersAccess && <LoyersModule key={intentKey} currentUser={currentUser} intent={loyersIntent} />}
         {section === "chantiers" && hasChantiersAccess && <ChantiersModule currentUser={currentUser} />}
         {section === "utilisateurs" && isLoyersAdmin && <UsersPage currentUser={currentUser} />}
       </main>
@@ -87,6 +127,7 @@ function Sidebar({ section, setSection, currentUser, isLoyersAdmin, hasLoyersAcc
     {
       label: "Modules",
       items: [
+        ...(isLoyersAdmin ? [{ id: "assistant", label: SECTION_LABELS.assistant, icon: Sparkles }] : []),
         ...(hasLoyersAccess ? [{ id: "loyers", label: SECTION_LABELS.loyers, icon: Wallet }] : []),
         ...(hasChantiersAccess ? [{ id: "chantiers", label: SECTION_LABELS.chantiers, icon: HardHat }] : []),
       ],

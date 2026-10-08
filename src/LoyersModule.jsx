@@ -51,14 +51,18 @@ function guessUnitType(u) {
   return "autre";
 }
 
-export default function LoyersModule({ currentUser }) {
+export default function LoyersModule({ currentUser, intent }) {
   const isAdmin = currentUser.role === "admin";
 
   const [properties, setProperties] = useState(null);
   const [payments, setPayments] = useState(null);
   const [expenses, setExpenses] = useState(null);
   const [loaded, setLoaded] = useState(false);
-  const [tab, setTab] = useState(isAdmin ? "dashboard" : "encaisser");
+  const [tab, setTab] = useState(() => {
+    const allowed = isAdmin ? ["dashboard", "encaisser", "biens", "loyers", "fiscalite"] : ["encaisser", "biens", "loyers"];
+    if (intent?.tab && allowed.includes(intent.tab)) return intent.tab;
+    return isAdmin ? "dashboard" : "encaisser";
+  });
   const [selectedPropertyId, setSelectedPropertyId] = useState(null);
   const [modal, setModal] = useState(null); // {type:'property'|'unit', data, propertyId}
   const [ledgerYear, setLedgerYear] = useState(new Date().getFullYear());
@@ -412,6 +416,7 @@ export default function LoyersModule({ currentUser }) {
       {notice && !error && <div role="status" style={{ ...styles.errorBanner, borderLeft: "3px solid var(--good)" }}><CheckCircle2 size={16} strokeWidth={2} color="var(--good)" style={{ flexShrink: 0 }} />{notice}</div>}
       {tab === "encaisser" && (
         <Encaisser
+          initialQuery={intent?.query || ""}
           allUnits={allUnits}
           payments={payments}
           curPeriod={curPeriod}
@@ -523,7 +528,7 @@ function LoyersNav({ tab, setTab, isAdmin, onExport, onImport, onAiImport }) {
       </div>
       {isAdmin && (
         <div style={{ display: "flex", gap: 8, paddingBottom: 8 }}>
-          <button style={{ ...styles.backupBtn, color: "var(--accent)", borderColor: "var(--accent-dim)" }} onClick={onAiImport} title="Importer un Excel, un PDF, un Word ou une photo : l'IA crée les locaux automatiquement">
+          <button className="hide-mobile" style={{ ...styles.backupBtn, color: "var(--accent)", borderColor: "var(--accent-dim)" }} onClick={onAiImport} title="Importer un Excel, un PDF, un Word ou une photo : l'IA crée les locaux automatiquement">
             <Sparkles size={15} strokeWidth={1.75} />
             <span>Importer un fichier (IA)</span>
           </button>
@@ -955,8 +960,8 @@ function shiftPeriod(period, delta) {
 
 const ENCAISSER_LIMIT = 60;
 
-function Encaisser({ allUnits, payments, curPeriod, setPaymentStatus, canTogglePayment }) {
-  const [query, setQuery] = useState("");
+function Encaisser({ initialQuery = "", allUnits, payments, curPeriod, setPaymentStatus, canTogglePayment }) {
+  const [query, setQuery] = useState(initialQuery);
   const [period, setPeriod] = useState(curPeriod);
   const [filter, setFilter] = useState("unpaid");
 
@@ -1452,7 +1457,7 @@ function Loyers({ allUnits, payments, ledgerYear, setLedgerYear, togglePayment, 
           </button>
         </div>
         <div style={styles.ledgerScroll}>
-          <table style={styles.ledgerTable}>
+          <table className="ledger-table" style={styles.ledgerTable}>
             <thead>
               <tr>
                 <th style={styles.ledgerHeadCell}>Local</th>

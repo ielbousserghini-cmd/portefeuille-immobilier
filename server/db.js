@@ -194,6 +194,45 @@ async function migrate() {
       UNIQUE(unit_key, alert_type, dedupe_key)
     );
   `);
+
+  // --- Assistant (agents + notifications push sur téléphone) ---
+  // app_settings : petites valeurs de configuration persistantes (ex. clés
+  // VAPID des notifications, générées une fois puis conservées).
+  // push_subscriptions : un abonnement par appareil (iPhone, ordinateur…),
+  // avec les préférences de notification de cet appareil.
+  // agent_runs : un passage quotidien des agents par jour (évite les doublons
+  // si le déclencheur externe appelle plusieurs fois).
+  // Version de session : incrémentée quand le mot de passe, le rôle ou
+  // l'état actif d'un compte change, ce qui invalide ses sessions ouvertes.
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL UNIQUE,
+      keys JSONB NOT NULL,
+      prefs JSONB NOT NULL DEFAULT '{"briefing": true, "payments": true, "alerts": true}',
+      user_agent TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_ok_at TIMESTAMPTZ
+    );
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      run_date DATE PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      summary JSONB NOT NULL
+    );
+    -- Rapport PDF du jour, archivé (une quinzaine de Ko par jour).
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS pdf BYTEA;
+    -- Copie complète des données du jour (même format que « Exporter »),
+    -- conservée 90 jours : permet de revenir en arrière après une erreur.
+    ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS snapshot JSONB;
+  `);
 }
 
 async function seedAdmin() {

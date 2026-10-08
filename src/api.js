@@ -107,4 +107,15 @@ export const api = {
     uploadRequest(`/api/ai/file-import${withProperty ? "?withProperty=1" : ""}`, file),
   aiContractAnalyze: (file) => uploadRequest("/api/ai/contract-analyze", file),
   checkAlertsNow: () => request("POST", "/api/alerts/check-now"),
+
+  // --- Assistant (agents) et notifications push ---
+  assistantInsights: () => request("GET", "/api/assistant/insights"),
+  assistantRunNow: () => request("POST", "/api/assistant/run-daily?force=1"),
+  assistantReports: () => request("GET", "/api/assistant/reports"),
+  pushPublicKey: () => request("GET", "/api/push/public-key"),
+  pushSubscribe: (subscription) => request("POST", "/api/push/subscribe", { subscription }),
+  pushStatus: (endpoint) => request("POST", "/api/push/status", { endpoint }),
+  pushPrefs: (endpoint, prefs) => request("PUT", "/api/push/prefs", { endpoint, prefs }),
+  pushUnsubscribe: (endpoint) => request("POST", "/api/push/unsubscribe", { endpoint }),
+  pushTest: () => request("POST", "/api/push/test"),
 };
