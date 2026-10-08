@@ -9,16 +9,15 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-// Neon / Render Postgres exigent une connexion SSL, mais avec un certificat
-// que Node ne reconnaît pas toujours comme "de confiance" par défaut.
-// rejectUnauthorized: false désactive uniquement la vérification stricte du
-// certificat (toujours chiffré en transit), ce qui est l'approche standard
-// pour ces fournisseurs gérés.
+// Connexion chiffrée ET certificat vérifié (Neon utilise des certificats
+// reconnus) : empêche qu'un intermédiaire se fasse passer pour la base.
+// Les réglages SSL de l'adresse sont retirés pour que celui-ci s'applique.
+const dbUrl = new URL(process.env.DATABASE_URL);
+for (const k of ["sslmode", "sslrootcert", "sslcert", "sslkey", "uselibpqcompat"]) dbUrl.searchParams.delete(k);
+const localDb = ["localhost", "127.0.0.1"].includes(dbUrl.hostname);
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL.includes("localhost")
-    ? false
-    : { rejectUnauthorized: false },
+  connectionString: dbUrl.toString(),
+  ssl: localDb ? false : { rejectUnauthorized: true },
 });
 
 async function migrate() {
