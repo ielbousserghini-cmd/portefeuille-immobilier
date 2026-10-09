@@ -1,0 +1,24 @@
+# Réveille l'extranet chaque matin et lance le passage quotidien des agents
+# (briefing sur le téléphone + rapport PDF archivé). Nécessaire parce que
+# Render (plan gratuit) met le serveur en veille après 15 minutes d'inactivité.
+name: Assistant — passage quotidien
+
+on:
+  schedule:
+    - cron: "5 7 * * *" # 07:05 UTC = 08:05 au Maroc (UTC+1)
+  workflow_dispatch: {}
+
+jobs:
+  run-daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Appeler /api/assistant/run-daily
+        env:
+          APP_URL: ${{ vars.APP_URL || 'https://portefeuille-immobilier.onrender.com' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          # Le premier appel peut prendre ~60 s, le temps que Render réveille le serveur.
+          curl --fail --silent --show-error --max-time 120 --retry 4 --retry-delay 30 --retry-all-errors \
+            -X POST "$APP_URL/api/assistant/run-daily" \
+            -H "x-cron-secret: $CRON_SECRET"
