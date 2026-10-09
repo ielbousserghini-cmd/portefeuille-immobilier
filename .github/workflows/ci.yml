@@ -1,0 +1,28 @@
+# Vérifie à chaque envoi que l'application se construit et que le serveur se
+# charge, avant que Render ne déploie quoi que ce soit de cassé.
+name: Vérification
+
+on:
+  push:
+    branches: ["**"]
+  pull_request: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Chargement des modules serveur
+        run: |
+          for f in server/routes/*.js server/agents/*.js server/push.js; do
+            DATABASE_URL=postgres://x JWT_SECRET=ci-cle-de-test-pas-secrete-0123456789 node -e "require('./$f')" || exit 1
+          done
+      - name: Audit de sécurité des dépendances (vulnérabilités graves)
+        run: npm audit --omit=dev --audit-level=high
