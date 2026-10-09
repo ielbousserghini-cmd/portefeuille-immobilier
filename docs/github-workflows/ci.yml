@@ -22,7 +22,7 @@ jobs:
       - name: Chargement des modules serveur
         run: |
           for f in server/routes/*.js server/agents/*.js server/push.js; do
-            DATABASE_URL=postgres://x JWT_SECRET=x node -e "require('./$f')" || exit 1
+            DATABASE_URL=postgres://x JWT_SECRET=ci-cle-de-test-pas-secrete-0123456789 node -e "require('./$f')" || exit 1
           done
       - name: Audit de sécurité des dépendances (vulnérabilités graves)
         run: npm audit --omit=dev --audit-level=high
